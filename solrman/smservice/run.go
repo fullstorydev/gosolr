@@ -16,6 +16,7 @@ package smservice
 
 import (
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/fullstorydev/gosolr/solrman/smmodel"
@@ -24,12 +25,12 @@ import (
 )
 
 const (
-	movesPerCycle        = 10               // How many shards to move at a time
-	iterationSleep       = 1 * time.Minute  // How long to sleep each attempt, no matter what
-	quiescenceSleep      = 10 * time.Minute // How long to sleep when stability is reached
-	splitsPerMachine     = 4                // How many shard splitting jobs to schedule on 1 physical machine at a time
-	maxAllowedDocs       = 5e6              // Max allowed docs allowed on a shard (5M)
-	maxAllowedExcessDocs = 1e6
+	movesPerCycle            = 10               // How many shards to move at a time
+	iterationSleep           = 1 * time.Minute  // How long to sleep each attempt, no matter what
+	quiescenceSleep          = 10 * time.Minute // How long to sleep when stability is reached
+	splitsPerMachine         = 4                // How many shard splitting jobs to schedule on 1 physical machine at a time
+	splitShardsWithDocCount  = 1000000          // Split shards with doc count > this
+	allSplitsDocCountTrigger = 1005000          // But don't do any splits until at least one shard > this
 )
 
 // Runs the main solr management loop, never returns.
@@ -209,16 +210,27 @@ func clusterStateGolden(logger Logger, clusterState *solrmanapi.SolrmanStatusRes
 	return result
 }
 
+type SplitShardRequestWithSize struct {
+	solrmanapi.SplitShardRequest
+	NumDocs int64
+}
+
+type byNumDocsDesc []*SplitShardRequestWithSize
+
+func (s byNumDocsDesc) Len() int {
+	return len(s)
+}
+func (s byNumDocsDesc) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+func (s byNumDocsDesc) Less(i, j int) bool {
+	return s[i].NumDocs > s[j].NumDocs
+}
+
 func computeShardSplits(s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) []*solrmanapi.SplitShardRequest {
-	splitOps := make([]*solrmanapi.SplitShardRequest, 0)
-
-	// We allow shards to grow bigger than maxAllowedShardBytes
-	// but start splitting shards that bigger than maxAllowedShardBytes
-	// if any shard gets bigger than maxAllowedShardBytes + maxAllowedExcessShardBytes
+	machineToSplitOps := make(map[string][]*SplitShardRequestWithSize)
 	anyShardTooBig := false
-
-	for _, v := range clusterState.SolrNodes {
-		nSplitsThisMachine := 0 // # split ops scheduled on this node
+	for machine, v := range clusterState.SolrNodes {
 		for _, status := range v.Cores {
 			// Continue if this collection has too many shards i.e greater tha 8 * #solr machines
 			if collstate, err := s.SolrMonitor.GetCollectionState(status.Collection); err != nil {
@@ -227,27 +239,40 @@ func computeShardSplits(s *SolrManService, clusterState *solrmanapi.SolrmanStatu
 				continue
 			}
 
-			if status.NumDocs > maxAllowedDocs+maxAllowedExcessDocs {
+			if status.NumDocs > allSplitsDocCountTrigger {
 				anyShardTooBig = true
 			}
 
-			if nSplitsThisMachine >= splitsPerMachine {
-				continue
-			}
-
-			if status.NumDocs > maxAllowedDocs {
-				x := &solrmanapi.SplitShardRequest{
-					Collection: status.Collection,
-					Shard:      status.Shard,
+			if status.NumDocs > splitShardsWithDocCount {
+				x := &SplitShardRequestWithSize{
+					solrmanapi.SplitShardRequest{
+						status.Collection,
+						status.Shard,
+					},
+					status.NumDocs,
 				}
-				splitOps = append(splitOps, x)
-				nSplitsThisMachine++
+				machineToSplitOps[machine] = append(machineToSplitOps[machine], x)
 			}
 		}
 	}
 
 	if !anyShardTooBig {
-		return make([]*solrmanapi.SplitShardRequest, 0)
+		return nil
+	}
+
+	// sort by biggest to smallest shards
+	// keep biggest splitsPerMachine shards only
+	// flatten and return
+
+	splitOps := make([]*solrmanapi.SplitShardRequest, 0)
+	for _, ops := range machineToSplitOps {
+		sort.Sort(byNumDocsDesc(ops))
+		for i, op := range ops {
+			if i == splitsPerMachine {
+				break
+			}
+			splitOps = append(splitOps, &op.SplitShardRequest)
+		}
 	}
 
 	return splitOps
