@@ -13,7 +13,7 @@ mkdir solrman
 cd solrman
 export GOPATH=`pwd`
 go get github.com/fullstorydev/gosolr/...
-./bin/solrman 
+./bin/solrman
 ```
 
 ## Warning
