@@ -1324,4 +1324,3 @@ coll3C_shard1_0_0_1_0_replica2,10.6M,7.1GB
 coll3C_shard1_0_0_1_1_replica2,10.8M,9.0GB
 coll3E_shard1_1_0_1_0_replica2,6.2M,5.6GB
 coll3E_shard1_1_0_1_1_replica2,6.8M,5.4GB
-
