@@ -15,8 +15,10 @@
 package smservice
 
 import (
+	"fmt"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/fullstorydev/gosolr/solrman/smmodel"
@@ -25,12 +27,13 @@ import (
 )
 
 const (
-	movesPerCycle            = 10               // How many shards to move at a time
-	iterationSleep           = 1 * time.Minute  // How long to sleep each attempt, no matter what
-	quiescenceSleep          = 10 * time.Minute // How long to sleep when stability is reached
-	splitsPerMachine         = 4                // How many shard splitting jobs to schedule on 1 physical machine at a time
-	splitShardsWithDocCount  = 1000000          // Split shards with doc count > this
-	allSplitsDocCountTrigger = 1005000          // But don't do any splits until at least one shard > this
+	movesPerCycle                 = 10               // How many shards to move at a time
+	iterationSleep                = 1 * time.Minute  // How long to sleep each attempt, no matter what
+	quiescenceSleep               = 10 * time.Minute // How long to sleep when stability is reached
+	splitsPerMachine              = 4                // How many shard splitting jobs to schedule on 1 physical machine at a time
+	splitShardsWithDocCount       = 1000000          // Split shards with doc count > this
+	allSplitsDocCountTrigger      = 1005000          // But don't do any splits until at least one shard > this
+	allowedMinToMaxShardSizeRatio = 0.2              // Ratio of smallest shard to biggest shard < this then warn about imbalance
 )
 
 // Runs the main solr management loop, never returns.
@@ -88,6 +91,11 @@ func (s *SolrManService) RunSolrMan() {
 			s.setStatusOp("cluster state is not golden, skipping; see logs for details")
 			s.Logger.Warningf("cluster state is not golden, skipping")
 			continue
+		}
+
+		if count := flagBadlyBalancedOrgs(s.Logger, s, clusterState); count != 0 {
+			s.setStatusOp(fmt.Sprintf("There are %d orgs with badly balanced shards.", count))
+			s.Logger.Warningf(fmt.Sprintf("There are %d orgs with badly balanced shards.", count))
 		}
 
 		shardSplits := computeShardSplits(s, clusterState)
@@ -225,6 +233,37 @@ func (s byNumDocsDesc) Swap(i, j int) {
 }
 func (s byNumDocsDesc) Less(i, j int) bool {
 	return s[i].NumDocs > s[j].NumDocs
+}
+
+func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) int {
+	orgToMin := make(map[string]int64)
+	orgToMax := make(map[string]int64)
+
+	getOrg := func(coreName string) string {
+		return strings.Split(coreName, "_")[0]
+	}
+
+	for _, v := range clusterState.SolrNodes {
+		for coreName, status := range v.Cores {
+			org := getOrg(coreName)
+			if status.NumDocs < orgToMin[org] {
+				orgToMin[org] = status.NumDocs
+			}
+			if status.NumDocs > orgToMax[org] {
+				orgToMax[org] = status.NumDocs
+			}
+		}
+	}
+
+	nBadlyBalancedOrg := 0
+	for org, max := range orgToMax {
+		if (2+float64(orgToMin[org]))/(2+float64(max)) < allowedMinToMaxShardSizeRatio {
+			nBadlyBalancedOrg++
+			logger.Warningf("Shards are getting imbalanced for org: " + org)
+		}
+	}
+
+	return nBadlyBalancedOrg
 }
 
 func computeShardSplits(s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) []*solrmanapi.SplitShardRequest {
