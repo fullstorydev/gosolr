@@ -93,14 +93,20 @@ func (s *SolrManService) RunSolrMan() {
 			continue
 		}
 
-		if count := flagBadlyBalancedOrgs(s.Logger, s, clusterState); count != 0 {
-			s.setStatusOp(fmt.Sprintf("There are %d orgs with badly balanced shards.", count))
-			s.Logger.Warningf(fmt.Sprintf("There are %d orgs with badly balanced shards.", count))
+		badlyBalancedOrgs := flagBadlyBalancedOrgs(s.Logger, s, clusterState)
+		if len(badlyBalancedOrgs) != 0 {
+			s.setStatusOp(fmt.Sprintf("There are %d orgs with badly balanced shards.", len(badlyBalancedOrgs)))
+			s.Logger.Warningf(fmt.Sprintf("There are %d orgs with badly balanced shards.", len(badlyBalancedOrgs)))
 		}
 
 		shardSplits := computeShardSplits(s, clusterState)
 
 		for _, shardSplit := range shardSplits {
+			if _, ok := badlyBalancedOrgs[shardSplit.Collection]; ok {
+				s.Logger.Warningf("skipping split for badly balanced org %s_%s", shardSplit.Collection, shardSplit.Shard)
+				continue
+			}
+
 			s.Logger.Infof("Scheduling split operation %v", shardSplit)
 			result, err := s.SplitShard(shardSplit)
 			if err != nil {
@@ -235,7 +241,7 @@ func (s byNumDocsDesc) Less(i, j int) bool {
 	return s[i].NumDocs > s[j].NumDocs
 }
 
-func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) int {
+func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) map[string]bool {
 	orgToMin := make(map[string]int64)
 	orgToMax := make(map[string]int64)
 
@@ -255,15 +261,15 @@ func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrm
 		}
 	}
 
-	nBadlyBalancedOrg := 0
+	badlyBalancedOrgs := make(map[string]bool)
 	for org, max := range orgToMax {
 		if (2+float64(orgToMin[org]))/(2+float64(max)) < allowedMinToMaxShardSizeRatio {
-			nBadlyBalancedOrg++
+			badlyBalancedOrgs[org] = true
 			logger.Warningf("Shards are getting imbalanced for org: " + org)
 		}
 	}
 
-	return nBadlyBalancedOrg
+	return badlyBalancedOrgs
 }
 
 func computeShardSplits(s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) []*solrmanapi.SplitShardRequest {
