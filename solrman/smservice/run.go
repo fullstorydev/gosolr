@@ -87,9 +87,13 @@ func (s *SolrManService) RunSolrMan() {
 			continue
 		}
 
-		if !clusterStateGolden(s.Logger, clusterState, liveNodes) {
+		problems := listClusterProblems(s.Logger, clusterState, liveNodes)
+
+		if len(problems) != 0 {
 			s.setStatusOp("cluster state is not golden, skipping; see logs for details")
-			s.Logger.Warningf("cluster state is not golden, skipping")
+			s.Logger.Warningf("cluster state is not golden, trying to fix...")
+			// Try to goldenize it. Use Midas' finger or sorcerer's stone
+			solveClusterProblems(s.Logger, clusterState, s.solrClient, problems)
 			continue
 		}
 
@@ -189,39 +193,72 @@ func (s *SolrManService) setStatusOp(status string) {
 	}
 }
 
-// Don't bother running solrman if anything is currently down, the results will be wrong.
-func clusterStateGolden(logger Logger, clusterState *solrmanapi.SolrmanStatusResponse, liveNodes []string) bool {
+const (
+	ProblemInactive          = "inactive"
+	ProblemConstruction      = "construction"
+	ProblemNodedown          = "nodeDown"
+	ProblemShardDown         = "down"
+	ProblemNegativeNumDocs   = "negativeNumDocs"
+	ProblemNegativeIndexSize = "negativeIndexSize"
+)
+
+type ClusterProblem struct {
+	Node       string
+	Collection string
+	Shard      string
+	Problem    string
+}
+
+func listClusterProblems(logger Logger, clusterState *solrmanapi.SolrmanStatusResponse, liveNodes []string) []*ClusterProblem {
 	liveNodeSet := map[string]bool{}
 	for _, liveNode := range liveNodes {
 		liveNodeSet[liveNode] = true
 	}
+	problems := make([]*ClusterProblem, 0)
 
-	result := true
 	for _, nodeStatus := range clusterState.SolrNodes {
 		if !liveNodeSet[nodeStatus.NodeName] {
 			logger.Warningf("%s not found in liveNodeSet", nodeStatus.NodeName)
-			return false
+			problems = append(problems, &ClusterProblem{nodeStatus.NodeName, "", "", ProblemNodedown})
+			return problems
 		}
 		for _, coreStatus := range nodeStatus.Cores {
 			if coreStatus.ShardState != "active" {
 				logger.Debugf("%s:%s_%s shard in state: %s", coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, coreStatus.ShardState)
-				result = false
+				problems = append(problems, &ClusterProblem{coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, coreStatus.ShardState})
 			}
 			if coreStatus.ReplicaState != "active" {
 				logger.Debugf("%s:%s_%s replica in state %s", coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, coreStatus.ReplicaState)
-				result = false
+				problems = append(problems, &ClusterProblem{coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, coreStatus.ReplicaState})
 			}
 			if coreStatus.IndexSize < 0 {
 				logger.Debugf("%s:%s_%s negative index size", coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard)
-				result = false
+				problems = append(problems, &ClusterProblem{coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, ProblemNegativeIndexSize})
 			}
 			if coreStatus.NumDocs < 0 {
 				logger.Debugf("%s:%s_%s negative doc count", coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard)
-				result = false
+				problems = append(problems, &ClusterProblem{coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, ProblemNegativeNumDocs})
 			}
 		}
 	}
-	return result
+	return problems
+}
+
+func solveClusterProblems(logger Logger, clusterState *solrmanapi.SolrmanStatusResponse, solrc *SolrClient, problems []*ClusterProblem) {
+	logger.Infof("Solving problems of cluster...")
+	for _, p := range problems {
+		switch p.Problem {
+		case ProblemInactive, ProblemConstruction:
+			// delete the shard
+			if err := solrc.DeleteShard(p.Collection, p.Shard); err != nil {
+				logger.Errorf("failed to delete shard %q of collection %q: %s", p.Shard, p.Collection, err)
+			} else {
+				logger.Debugf("deleted shard %q of collection %q", p.Shard, p.Collection)
+			}
+		case ProblemNodedown, ProblemNegativeIndexSize, ProblemNegativeNumDocs, ProblemShardDown:
+			// nop | don't know | don't care | etc.
+		}
+	}
 }
 
 type SplitShardRequestWithSize struct {
