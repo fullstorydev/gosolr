@@ -31,8 +31,8 @@ const (
 	iterationSleep                = 1 * time.Minute  // How long to sleep each attempt, no matter what
 	quiescenceSleep               = 10 * time.Minute // How long to sleep when stability is reached
 	splitsPerMachine              = 4                // How many shard splitting jobs to schedule on 1 physical machine at a time
-	splitShardsWithDocCount       = 1000000          // Split shards with doc count > this
-	allSplitsDocCountTrigger      = 1005000          // But don't do any splits until at least one shard > this
+	splitShardsWithDocCount       = 5000000          // Split shards with doc count > this
+	allSplitsDocCountTrigger      = 5005000          // But don't do any splits until at least one shard > this
 	allowedMinToMaxShardSizeRatio = 0.2              // Ratio of smallest shard to biggest shard < this then warn about imbalance
 )
 
@@ -278,6 +278,22 @@ func (s byNumDocsDesc) Less(i, j int) bool {
 	return s[i].NumDocs > s[j].NumDocs
 }
 
+// MaxInt64 returns the maximum of int64 values.
+func MaxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// MinInt64 returns the minimum of int64 values.
+func MinInt64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) map[string]bool {
 	orgToMin := make(map[string]int64)
 	orgToMax := make(map[string]int64)
@@ -289,10 +305,16 @@ func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrm
 	for _, v := range clusterState.SolrNodes {
 		for coreName, status := range v.Cores {
 			org := getOrg(coreName)
-			if status.NumDocs < orgToMin[org] {
+
+			if min, ok := orgToMin[org]; ok {
+				orgToMin[org] = MinInt64(min, status.NumDocs)
+			} else {
 				orgToMin[org] = status.NumDocs
 			}
-			if status.NumDocs > orgToMax[org] {
+
+			if max, ok := orgToMax[org]; ok {
+				orgToMax[org] = MaxInt64(max, status.NumDocs)
+			} else {
 				orgToMax[org] = status.NumDocs
 			}
 		}
