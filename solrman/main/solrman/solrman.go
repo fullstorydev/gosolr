@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"encoding/json"
+
 	"github.com/fullstorydev/gosolr/solrman/smservice"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
@@ -92,7 +93,7 @@ func run(logger *log.Logger) error {
 		conn := redisPool.Get()
 		defer conn.Close()
 		if _, err := conn.Do("PING"); err != nil {
-			return errors.New(fmt.Sprintf("Failed to connect redis on first try: %s", err))
+			return fmt.Errorf("Failed to connect redis on first try: %s", err)
 		}
 		return nil
 	}(); err != nil {
@@ -101,7 +102,7 @@ func run(logger *log.Logger) error {
 
 	mutex, err := acquireAndMonitorRedisMutex(smLogger, redisPool)
 	if err != nil {
-		errors.New(fmt.Sprintf("Failed to acquire Solrman redis mutex: %s", err))
+		return fmt.Errorf("Failed to acquire Solrman redis mutex: %s", err)
 	}
 	smLogger.Infof("Acquired Solrman redis mutex")
 	defer mutex.Unlock()
@@ -208,7 +209,7 @@ func run(logger *log.Logger) error {
 	}
 
 	if err := ListenAndServe(httpServer); err != nil {
-		return errors.New(fmt.Sprintf("Failed to start http server: %s", err))
+		return fmt.Errorf("Failed to start http server: %s", err)
 	}
 
 	smLogger.Debugf("exiting...")
@@ -251,7 +252,7 @@ func acquireAndMonitorRedisMutex(logger *solrmanLogger, redisPool *redis.Pool) (
 	logger.Infof("Acquiring redis mutex...")
 	mutex, err := redsync.NewMutexWithPool(SolrmanMutexRedisKey, []*redis.Pool{redisPool})
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Failed to create redis mutex: %s", err))
+		return nil, fmt.Errorf("Failed to create redis mutex: %s", err)
 	}
 	// Lock lasts 1 minute, we refresh it every 30 seconds in the steady state.
 	// For initial acquisition, try every 5 seconds for just over the expiry time.
@@ -260,7 +261,7 @@ func acquireAndMonitorRedisMutex(logger *solrmanLogger, redisPool *redis.Pool) (
 	mutex.Delay = 5 * time.Second
 	mutex.Tries = 12 + 1
 	if err := mutex.Lock(); err != nil {
-		return nil, errors.New(fmt.Sprintf("Failed to acquire redis mutex: %s", err))
+		return nil, fmt.Errorf("Failed to acquire redis mutex: %s", err)
 	}
 
 	// Monitor the mutex and touch it every 30 seconds; if we lose the mutex (somehow) shut down.

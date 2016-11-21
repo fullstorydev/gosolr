@@ -128,7 +128,7 @@ func (c *SolrMonitor) start() error {
 		return err
 	}
 	if len(globalClusterState) > 2 {
-		return errors.New(fmt.Sprintf("%s: solrmonitor does not support state format v1; zk node should contain only '{}'; please use Solr's MIGRATESTATEFORMAT collections command", globalClusterStatePath))
+		return fmt.Errorf("%s: solrmonitor does not support state format v1; zk node should contain only '{}'; please use Solr's MIGRATESTATEFORMAT collections command", globalClusterStatePath)
 	}
 
 	collectionsPath := c.solrRoot + "/collections"
@@ -214,7 +214,7 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
 }
 
 func (c *SolrMonitor) updateLiveNodes(liveNodes []string) {
-	c.logger.Printf("live_nodes: %s", liveNodes)
+	c.logger.Printf("live_nodes (%d): %s", len(liveNodes), liveNodes)
 	c.liveNodes = liveNodes
 }
 
@@ -276,7 +276,7 @@ func parseStateData(name string, data []byte) *parsedCollectionState {
 	}
 
 	if len(keys) != 1 || keys[0] != name {
-		err := errors.New(fmt.Sprintf("Expected 1 key, got %s", keys))
+		err := fmt.Errorf("Expected 1 key, got %s", keys)
 		return &parsedCollectionState{err: err}
 	}
 
