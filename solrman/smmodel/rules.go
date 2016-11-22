@@ -101,7 +101,7 @@ type RuleCollectionCoreBalance struct {
 func (r *RuleCollectionCoreBalance) GetWeight() float64 {
 	// We want each collection's balance to be worth 1/10 of the global core balance to prioritize org balance.
 	// So we give this rule a 0.2 weight, but the score (below) adds together the balance for every collection.
-	return 0.2
+	return 1.0
 }
 
 func (r *RuleCollectionCoreBalance) Score(m *Model) float64 {
