@@ -93,6 +93,10 @@ func (m *Model) computeNextMoveShard(immobileCores map[string]bool, shard int, s
 		if immobileCores[core.Name] {
 			continue
 		}
+		if core.Docs < 500000 {
+			// HACK, optimization: don't even consider move cores with less than 500K docs
+			continue
+		}
 		var fromNode *Node
 		for _, node := range m.Nodes {
 			if node.Contains(core) {
@@ -126,6 +130,10 @@ func (m *Model) countPerms(immobileCores map[string]bool) int {
 	count := 0
 	for _, core := range m.cores {
 		if immobileCores[core.Name] {
+			continue
+		}
+		if core.Docs < 500000 {
+			// HACK, optimization: don't even consider move cores with less than 500K docs
 			continue
 		}
 		var fromNode *Node

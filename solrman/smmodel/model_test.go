@@ -113,8 +113,8 @@ func TestLargeModel(t *testing.T) {
 	}
 
 	assertEquals(t, []string{
-		"{\"core\":\"coll12_shard1_0_replica1\",\"collection\":\"coll12\",\"shard\":\"shard1_0\",\"from_node\":\"solr-1.node\",\"to_node\":\"solr-6.node\"}",
 		"{\"core\":\"coll2D_shard1_1_0_replica1\",\"collection\":\"coll2D\",\"shard\":\"shard1_1_0\",\"from_node\":\"solr-3.node\",\"to_node\":\"solr-9.node\"}",
+		"{\"core\":\"coll12_shard1_0_replica1\",\"collection\":\"coll12\",\"shard\":\"shard1_0\",\"from_node\":\"solr-1.node\",\"to_node\":\"solr-6.node\"}",
 		"{\"core\":\"coll3_shard1_0_replica1\",\"collection\":\"coll3\",\"shard\":\"shard1_0\",\"from_node\":\"solr-1.node\",\"to_node\":\"solr-6.node\"}",
 	}, moves)
 }

@@ -89,17 +89,28 @@ func (s *SolrManService) RunSolrMan() {
 
 		problems := listClusterProblems(s.Logger, clusterState, liveNodes)
 
-		if len(problems) != 0 {
-			s.setStatusOp("cluster state is not golden, skipping; see logs for details")
+		if len(problems) > 0 {
 			s.Logger.Warningf("cluster state is not golden, trying to fix...")
 			// Try to goldenize it. Use Midas' finger or sorcerer's stone
 			solveClusterProblems(s.Logger, clusterState, s.solrClient, problems)
-			continue
+
+			// Remove any problem nodes from the model and operate on a reduced cluster
+			for _, problem := range problems {
+				node := problem.Node
+				if _, ok := clusterState.SolrNodes[node]; ok {
+					s.Logger.Warningf("removing bad node %s from model", node)
+					delete(clusterState.SolrNodes, node)
+				}
+			}
+
+			if len(clusterState.SolrNodes) < 1 {
+				s.setStatusOp("no healthy nodes, skipping; see logs for details")
+				continue
+			}
 		}
 
 		badlyBalancedOrgs := flagBadlyBalancedOrgs(s.Logger, s, clusterState)
-		if len(badlyBalancedOrgs) != 0 {
-			s.setStatusOp(fmt.Sprintf("There are %d orgs with badly balanced shards.", len(badlyBalancedOrgs)))
+		if len(badlyBalancedOrgs) > 0 {
 			s.Logger.Warningf(fmt.Sprintf("There are %d orgs with badly balanced shards.", len(badlyBalancedOrgs)))
 		}
 
@@ -389,8 +400,8 @@ func computeShardMoves(clusterState *solrmanapi.SolrmanStatusResponse, count int
 		return nil, err
 	}
 
-	// Leave 2 cores open for handling queries / etc.
-	numCPU := runtime.GOMAXPROCS(0) - 2
+	// Leave 1 cores open for handling queries / etc.
+	numCPU := runtime.GOMAXPROCS(0) - 1
 	if numCPU < 1 {
 		numCPU = 1
 	}
