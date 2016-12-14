@@ -41,7 +41,7 @@ func (r *RuleCoreBalance) Score(m *Model) float64 {
 
 	var costActual float64
 	for _, node := range m.Nodes {
-		nodeCost := float64(len(node.CoreMap))
+		nodeCost := float64(node.coreCount)
 		nodeCost *= nodeCost
 		costActual += nodeCost
 	}
@@ -107,9 +107,10 @@ func (r *RuleCollectionCoreBalance) GetWeight() float64 {
 func (r *RuleCollectionCoreBalance) Score(m *Model) float64 {
 	var totalScore float64
 	for _, collection := range m.Collections {
-		// Don't factor in single core collections at all.
 		if len(collection.cores) > 1 {
 			totalScore += r.scoreCollection(collection, m)
+		} else {
+			totalScore += 1
 		}
 	}
 	return totalScore

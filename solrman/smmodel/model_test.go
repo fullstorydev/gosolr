@@ -121,7 +121,7 @@ func TestLargeModel(t *testing.T) {
 
 func assertEquals(t *testing.T, expected []string, actual []*Move) {
 	if len(expected) != len(actual) {
-		t.Errorf("expected length: %v, actual: %v", len(expected), len(actual))
+		t.Errorf("expected: %v, actual: %v", expected, actual)
 		return
 	}
 	for i := range expected {

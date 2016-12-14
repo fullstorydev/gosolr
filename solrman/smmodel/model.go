@@ -16,6 +16,7 @@ package smmodel
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 type Model struct {
@@ -34,21 +35,31 @@ func (m *Model) Add(core *Core) {
 
 // Return a new model with the given move applied
 func (m *Model) WithMove(core *Core, toNode *Node) *Model {
-	newCollections := m.Collections
-	completeExistingMove := toNode.ContainsShard(core.shardName())
+	if toNode.Contains(core) {
+		return m
+	}
 
-	if completeExistingMove {
-		// The target node already contains a copy of this shard; this could be an incomplete move.
-		// Update the model to reflect deleting this core; i.e. if this move finishes.
-		// Copy-on-modify a new collections list where this core has been deleted from its collection.
-		newCollections = make([]*Collection, len(m.Collections))
-		for i, c := range m.Collections {
-			if c.Name == core.Collection {
-				newCollections[i] = c.Without(core)
-			} else {
-				newCollections[i] = c
+	completeExistingMove := func() bool {
+		// See if any cores exist on the target node with the same shardname.
+		shardName := core.shardName()
+		for _, coll := range m.Collections {
+			if coll.Name == core.Collection {
+				for _, c := range coll.cores {
+					if toNode.Contains(c) && c.shardName() == shardName {
+						return true
+					}
+				}
+				return false
 			}
 		}
+		panic(fmt.Sprintf("could not find collection %s for core %s in model", core.Collection, core.Name))
+	}()
+
+	var newCore *Core
+	if !completeExistingMove {
+		coreCopy := *core
+		newCore = &coreCopy
+		newCore.nodeId = toNode.Address
 	}
 
 	// Update the contents of the nodes to reflect the move.
@@ -63,7 +74,7 @@ func (m *Model) WithMove(core *Core, toNode *Node) *Model {
 				newNodes[i] = node
 			} else {
 				// Replace with a node that includes this core
-				newNodes[i] = node.With(core)
+				newNodes[i] = node.With(newCore)
 			}
 		} else {
 			// Do nothing.
@@ -71,10 +82,37 @@ func (m *Model) WithMove(core *Core, toNode *Node) *Model {
 		}
 	}
 
+	// Update the collections to reflect the move
+	newCollections := make([]*Collection, len(m.Collections))
+	for i, c := range m.Collections {
+		if c.Name == core.Collection {
+			if completeExistingMove {
+				newCollections[i] = c.Without(core)
+			} else {
+				newCollections[i] = c.Replace(core, newCore)
+			}
+		} else {
+			newCollections[i] = c
+		}
+	}
+
+	// Update the core list to reflect the move.
+	newCores := make([]*Core, 0, len(m.cores))
+	for _, c := range m.cores {
+		if c == core {
+			if !completeExistingMove {
+				newCores = append(newCores, newCore)
+			}
+		} else {
+			newCores = append(newCores, c)
+		}
+	}
+
+	// Subtle: do NOT adjust m.Docs / m.Size for a core deletion. Otherwise deletions would score badly.
 	return &Model{
 		Nodes:       newNodes,
 		Collections: newCollections,
-		cores:       m.cores,
+		cores:       newCores,
 		Docs:        m.Docs,
 		Size:        m.Size,
 	}
@@ -199,62 +237,35 @@ func (m *Model) Score() float64 {
 }
 
 type Node struct {
-	Name     string           `json:"name"`
-	Address  string           `json:"address"`
-	Docs     float64          `json:"docs"`
-	Size     float64          `json:"size"`  // in bytes
-	CoreMap  map[string]*Core `json:"cores"` // index all the cores on this node by coreName
-	shardMap map[string]*Core // index all the cores on this node by shardName
+	Name      string  `json:"name"`
+	Address   string  `json:"address"`
+	Docs      float64 `json:"docs"`
+	Size      float64 `json:"size"` // in bytes
+	coreCount int
 }
 
 func (n *Node) Add(core *Core) {
 	n.Docs += core.Docs
 	n.Size += core.Size
-	if n.CoreMap == nil {
-		n.CoreMap = make(map[string]*Core)
-	}
-	if n.shardMap == nil {
-		n.shardMap = make(map[string]*Core)
-	}
-	n.CoreMap[core.Name] = core
-	n.shardMap[core.shardName()] = core
+	n.coreCount += 1
+	core.nodeId = n.Address
 }
 
 func (n *Node) Contains(core *Core) bool {
-	val, ok := n.CoreMap[core.Name]
-	return ok && val == core
-}
-
-func (n *Node) ContainsShard(shardName string) bool {
-	_, ok := n.shardMap[shardName]
-	return ok
+	return core.nodeId == n.Address
 }
 
 func (n *Node) With(core *Core) *Node {
-	if n.Contains(core) {
-		return n
+	if !n.Contains(core) {
+		panic(fmt.Sprintf("core %s assigned to %s cannot be added to %s", core.Name, core.nodeId, n.Address))
 	}
-
-	// Copy the core map & shard map, everything else is immutable
-	coreMap := make(map[string]*Core, len(n.CoreMap)+1)
-	for k, v := range n.CoreMap {
-		coreMap[k] = v
-	}
-	coreMap[core.Name] = core
-
-	shardMap := make(map[string]*Core, len(n.shardMap)+1)
-	for k, v := range n.shardMap {
-		shardMap[k] = v
-	}
-	shardMap[core.shardName()] = core
 
 	return &Node{
-		Name:     n.Name,
-		Address:  n.Address,
-		CoreMap:  coreMap,
-		Docs:     n.Docs + core.Docs,
-		Size:     n.Size + core.Size,
-		shardMap: shardMap,
+		Name:      n.Name,
+		Address:   n.Address,
+		Docs:      n.Docs + core.Docs,
+		Size:      n.Size + core.Size,
+		coreCount: n.coreCount + 1,
 	}
 }
 
@@ -263,26 +274,12 @@ func (n *Node) Without(core *Core) *Node {
 		return n
 	}
 
-	// Copy the core map & shard map, everything else is immutable
-	coreMap := make(map[string]*Core, len(n.CoreMap)+1)
-	for k, v := range n.CoreMap {
-		coreMap[k] = v
-	}
-	delete(coreMap, core.Name)
-
-	shardMap := make(map[string]*Core, len(n.shardMap)+1)
-	for k, v := range n.shardMap {
-		shardMap[k] = v
-	}
-	delete(shardMap, core.shardName())
-
 	return &Node{
-		Name:     n.Name,
-		Address:  n.Address,
-		CoreMap:  coreMap,
-		Docs:     n.Docs - core.Docs,
-		Size:     n.Size - core.Size,
-		shardMap: shardMap,
+		Name:      n.Name,
+		Address:   n.Address,
+		Docs:      n.Docs - core.Docs,
+		Size:      n.Size - core.Size,
+		coreCount: n.coreCount - 1,
 	}
 }
 
@@ -300,25 +297,48 @@ func (c *Collection) Add(core *Core) {
 }
 
 func (c *Collection) Without(core *Core) *Collection {
-	found := -1
-	for i, c := range c.cores {
+	found := false
+	newCores := make([]*Core, 0, len(c.cores))
+	for _, c := range c.cores {
 		if c == core {
-			found = i
+			found = true
+		} else {
+			newCores = append(newCores, c)
 		}
-
-	}
-	if found < 0 {
-		return c
 	}
 
-	newCores := make([]*Core, 0, len(c.cores)-1)
-	newCores = append(newCores, c.cores[0:found]...)
-	newCores = append(newCores, c.cores[found+1:len(c.cores)]...)
+	if !found {
+		panic(fmt.Sprintf("core %s not found in collection %s", core.Name, c.Name))
+	}
 
 	return &Collection{
 		Name:  c.Name,
 		Docs:  c.Docs - core.Docs,
 		Size:  c.Size - core.Size,
+		cores: newCores,
+	}
+}
+
+func (c *Collection) Replace(core *Core, newCore *Core) *Collection {
+	found := false
+	newCores := make([]*Core, 0, len(c.cores))
+	for _, c := range c.cores {
+		if c == core {
+			found = true
+			newCores = append(newCores, newCore)
+		} else {
+			newCores = append(newCores, c)
+		}
+	}
+
+	if !found {
+		panic(fmt.Sprintf("core %s not found in collection %s", core.Name, c.Name))
+	}
+
+	return &Collection{
+		Name:  c.Name,
+		Docs:  c.Docs - core.Docs + newCore.Docs,
+		Size:  c.Size - core.Size + newCore.Size,
 		cores: newCores,
 	}
 }
@@ -329,6 +349,7 @@ type Core struct {
 	Shard      string  `json:"shard"`
 	Docs       float64 `json:"docs"`
 	Size       float64 `json:"size"` // in bytes
+	nodeId     string  // the node I currently belong to
 }
 
 func (c *Core) shardName() string {
