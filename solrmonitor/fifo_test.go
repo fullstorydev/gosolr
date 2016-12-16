@@ -90,6 +90,6 @@ func (g *taskGenerator) newTask() zkDispatchTask {
 	})
 	return zkDispatchTask{
 		callback: &handler,
-		event: zk.Event{Type: zk.EventType(*g)},
+		event:    zk.Event{Type: zk.EventType(*g)},
 	}
 }
