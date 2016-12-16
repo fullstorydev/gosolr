@@ -161,6 +161,42 @@ func TestDispatchesToSameCallbackAreSerial(t *testing.T) {
 	tasksShouldBecomeEmpty(t, disp)
 }
 
+func TestDispatchesToSameNakedFuncAreConcurrent(t *testing.T) {
+	disp := NewZkDispatcher(zk.DefaultLogger)
+	var channels [10]chan zk.Event
+	var run sync.WaitGroup
+	run.Add(1)
+
+	state := testState{t: t, run: &run}
+	cb := state.newCallback(10)
+	f := cb.Handle
+
+	for i := 0; i < 10; i++ {
+		state.done.Add(1)
+		channels[i] = make(chan zk.Event, 1)
+		disp.Watch(channels[i], f)
+	}
+
+	// send an event to get them started
+	for i := 0; i < 10; i++ {
+		channels[i] <- state.gen.newEvent()
+	}
+	// give dispatch go routine(s) a chance to start
+	time.Sleep(200 * time.Millisecond)
+	// let 'em rip
+	run.Done()
+
+	// wait for them all to finish
+	state.done.Wait()
+
+	if state.maxConcurrentExecutions != 10 {
+		t.Errorf("Should have been 10 concurrent executions (1 for each lambda);"+
+			" instead detected %d", state.maxConcurrentExecutions)
+	}
+
+	tasksShouldBecomeEmpty(t, disp)
+}
+
 func TestDispatchesToDifferentCallbacksAreConcurrent(t *testing.T) {
 	disp := NewZkDispatcher(zk.DefaultLogger)
 	var channels [10]chan zk.Event
