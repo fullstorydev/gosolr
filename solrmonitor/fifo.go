@@ -41,8 +41,9 @@ func (q *fifoTaskQueue) add(task zkDispatchTask) {
 				}
 			}
 			biggerSlice = make([]zkDispatchTask, newSize)
-			copy(biggerSlice, q.slice[q.head:])
-			copy(biggerSlice[len(q.slice)-q.head:], q.slice[:q.head])
+			leadingSlice, trailingSlice := q.slice[q.head:], q.slice[:q.head]
+			copy(biggerSlice, leadingSlice)
+			copy(biggerSlice[len(leadingSlice):], trailingSlice)
 			q.head = 0
 			q.tail = q.size
 			q.slice = biggerSlice

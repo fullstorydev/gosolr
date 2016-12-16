@@ -1,12 +1,12 @@
 package solrmonitor
 
 import (
-	"github.com/samuel/go-zookeeper/zk"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/samuel/go-zookeeper/zk"
 )
 
 // simple generator of zk.Event objects, with monotonically increasing Type field
@@ -162,13 +162,6 @@ func TestDispatchesToSameCallbackAreSerial(t *testing.T) {
 }
 
 func TestDispatchesToDifferentCallbacksAreConcurrent(t *testing.T) {
-	// make sure we can run all of these concurrently
-	numRoutines := runtime.GOMAXPROCS(0)
-	if numRoutines < 30 {
-		numRoutines = runtime.GOMAXPROCS(30)
-	}
-	defer runtime.GOMAXPROCS(numRoutines)
-
 	disp := NewZkDispatcher(zk.DefaultLogger)
 	var channels [10]chan zk.Event
 	var run, ready sync.WaitGroup

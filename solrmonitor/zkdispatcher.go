@@ -37,13 +37,8 @@ type ZkEventCallback interface {
 	Handle(zk.Event) <-chan zk.Event
 }
 
-// Adapts a ZkEventHandler function to the ZkEventCallback interface.
-type zkEventHandlerAdapter struct {
-	handler ZkEventHandler
-}
-
-func (a *zkEventHandlerAdapter) Handle(event zk.Event) <-chan zk.Event {
-	return a.handler(event)
+func (h *ZkEventHandler) Handle(event zk.Event) <-chan zk.Event {
+	return (*h)(event)
 }
 
 // Monitors many zk.Event channels. Dispatches handling to other goroutines allowing handlers to
@@ -118,7 +113,7 @@ func (d *ZkDispatcher) WatchEvent(watcher <-chan zk.Event, handler ZkEventCallba
 
 // Watch a new ZK event using the given function to handle the event.
 func (d *ZkDispatcher) Watch(watcher <-chan zk.Event, handler ZkEventHandler) error {
-	return d.WatchEvent(watcher, &zkEventHandlerAdapter{handler})
+	return d.WatchEvent(watcher, &handler)
 }
 
 func (d *ZkDispatcher) eventLoop() {
@@ -198,14 +193,16 @@ func (d *ZkDispatcher) dequeueTask(cb ZkEventCallback) (zkDispatchTask, bool) {
 	// So first we remove the old head.
 	q := d.tasks[cb]
 	q.poll()
+
 	// Then return the next one.
-	if q.size == 0 {
+	ret, ok := q.peek()
+	if !ok {
 		// remove item from map to make sure map does
 		// not grow unbounded
 		delete(d.tasks, cb)
 		return zkDispatchTask{}, false
 	}
-	return q.peek()
+	return ret, ok
 }
 
 func newCase(watcher <-chan zk.Event) reflect.SelectCase {

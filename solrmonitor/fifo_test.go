@@ -1,12 +1,13 @@
 package solrmonitor
 
 import (
-	"github.com/samuel/go-zookeeper/zk"
-	"k8s.io/kubernetes/staging/src/k8s.io/client-go/pkg/util/rand"
+	"math/rand"
 	"testing"
+
+	"github.com/samuel/go-zookeeper/zk"
 )
 
-func TestSimple(t *testing.T) {
+func TestFifoSimple(t *testing.T) {
 	q := fifoTaskQueue{}
 	var g taskGenerator
 
@@ -30,7 +31,7 @@ func TestSimple(t *testing.T) {
 	}
 }
 
-func TestRingBufferMaintenance(t *testing.T) {
+func TestFifoRingBufferMaintenance(t *testing.T) {
 	// We do lots of operations to make sure we test various cases, like resizing of the
 	// queues buffer, head and tail wrapping past the end of the ring buffer, etc.
 
@@ -84,10 +85,11 @@ type taskGenerator int
 
 func (g *taskGenerator) newTask() zkDispatchTask {
 	(*g)++
+	handler := ZkEventHandler(func(zk.Event) <-chan zk.Event {
+		return nil
+	})
 	return zkDispatchTask{
-		callback: &zkEventHandlerAdapter{func(zk.Event) <-chan zk.Event {
-			return nil
-		}},
+		callback: &handler,
 		event: zk.Event{Type: zk.EventType(*g)},
 	}
 }
