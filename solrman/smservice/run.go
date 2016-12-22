@@ -91,8 +91,9 @@ func (s *SolrManService) RunSolrMan() {
 
 		if len(problems) > 0 {
 			s.Logger.Warningf("cluster state is not golden, trying to fix...")
+			// TODO(scottb): disabled for now.
 			// Try to goldenize it. Use Midas' finger or sorcerer's stone
-			solveClusterProblems(s.Logger, clusterState, s.solrClient, problems)
+			// solveClusterProblems(s.Logger, clusterState, s.solrClient, problems)
 
 			// Remove any problem nodes from the model and operate on a reduced cluster
 			for _, problem := range problems {
