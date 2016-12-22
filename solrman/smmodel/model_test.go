@@ -61,7 +61,7 @@ func TestSmallModel(t *testing.T) {
 	}
 
 	assertEquals(t, []string{
-		"{\"core\":\"A_shard1_1_replica2\",\"collection\":\"A\",\"shard\":\"shard1_1\",\"from_node\":\"solr-1.node\",\"to_node\":\"solr-2.node\"}",
+		`{"core":"A_shard1_1_replica2","collection":"A","shard":"shard1_1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
 	}, moves)
 }
 
@@ -85,7 +85,31 @@ func TestDeletesExtraReplicas(t *testing.T) {
 	}
 
 	assertEquals(t, []string{
-		"{\"core\":\"A_shard1_replica1\",\"collection\":\"A\",\"shard\":\"shard1\",\"from_node\":\"solr-2.node\",\"to_node\":\"solr-1.node\"}",
+		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-2.node","to_node":"solr-1.node"}`,
+	}, moves)
+}
+
+func TestCollectionBalanceModel(t *testing.T) {
+	t.Parallel()
+	baseModel := createTestModel(collectionBalanceModel)
+
+	var moves []*Move
+	immobileCores := map[string]bool{}
+	m := baseModel
+	for i := 0; i < 3; i++ {
+		mPrime, move := m.ComputeNextMove(1, immobileCores)
+		if m == mPrime {
+			assertNil(t, move)
+			break
+		}
+		assertNotNil(t, move)
+		moves = append(moves, move)
+		immobileCores[move.Core.Name] = true
+		m = mPrime
+	}
+
+	assertEquals(t, []string{
+		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
 	}, moves)
 }
 
@@ -113,9 +137,9 @@ func TestLargeModel(t *testing.T) {
 	}
 
 	assertEquals(t, []string{
-		"{\"core\":\"coll2D_shard1_1_0_replica1\",\"collection\":\"coll2D\",\"shard\":\"shard1_1_0\",\"from_node\":\"solr-3.node\",\"to_node\":\"solr-9.node\"}",
-		"{\"core\":\"coll12_shard1_0_replica1\",\"collection\":\"coll12\",\"shard\":\"shard1_0\",\"from_node\":\"solr-1.node\",\"to_node\":\"solr-6.node\"}",
-		"{\"core\":\"coll3_shard1_0_replica1\",\"collection\":\"coll3\",\"shard\":\"shard1_0\",\"from_node\":\"solr-1.node\",\"to_node\":\"solr-6.node\"}",
+		`{"core":"coll12_shard1_0_replica1","collection":"coll12","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-9.node"}`,
+		`{"core":"coll3_shard1_0_replica1","collection":"coll3","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-9.node"}`,
+		`{"core":"coll63_shard1_0_replica1","collection":"coll63","shard":"shard1_0","from_node":"solr-2.node","to_node":"solr-10.node"}`,
 	}, moves)
 }
 
@@ -162,7 +186,7 @@ func createTestModel(data string) *Model {
 				panic("already seen: " + name)
 			}
 			seenNodeNames[name] = true
-			m.Nodes = append(m.Nodes, currentNode)
+			m.AddNode(currentNode)
 		} else if strings.Contains(line, "_shard") {
 			parts := strings.Split(line, ",")
 			if len(parts) != 3 {
@@ -259,11 +283,21 @@ const (
 		"B_shard1_replica1,1.8M,1.4GB\n" +
 		""
 
+	// Should delete the extra replica from solr-2
 	extraReplicaModel = "" +
 		"solr-1.node,1.1.1.1:8983_solr\n" +
 		"A_shard1_replica2,15.0M,12.0GB\n" +
 		"solr-2.node,2.2.2.2:8983_solr\n" +
 		"A_shard1_replica1,15.0M,12.0GB\n" +
 		"B_shard1_replica1,1.8M,1.4GB\n" +
+		""
+
+	// Should move A to solr-2 for better collection balance (even if worse cluster balance)
+	collectionBalanceModel = "" +
+		"solr-1.node,1.1.1.1:8983_solr\n" +
+		"A_shard1_replica1,15.5M,11.5GB\n" +
+		"B_shard1_replica1,15.0M,11.0GB\n" +
+		"solr-2.node,2.2.2.2:8983_solr\n" +
+		"B_shard2_replica1,1.0M,1.0GB\n" +
 		""
 )

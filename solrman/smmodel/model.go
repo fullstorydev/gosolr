@@ -19,18 +19,27 @@ import (
 	"fmt"
 )
 
+const debug = false
+
 type Model struct {
 	Docs        float64       `json:"docs"`
 	Size        float64       `json:"size"` // in bytes
 	Nodes       []*Node       `json:"nodes"`
 	Collections []*Collection `json:"collections"`
 	cores       []*Core
+
+	cost float64 // cached cost
 }
 
 func (m *Model) Add(core *Core) {
 	m.Docs += core.Docs
 	m.Size += core.Size
 	m.cores = append(m.cores, core)
+}
+
+func (m *Model) AddNode(node *Node) {
+	node.id = len(m.Nodes)
+	m.Nodes = append(m.Nodes, node)
 }
 
 // Return a new model with the given move applied
@@ -59,7 +68,7 @@ func (m *Model) WithMove(core *Core, toNode *Node) *Model {
 	if !completeExistingMove {
 		coreCopy := *core
 		newCore = &coreCopy
-		newCore.nodeId = toNode.Address
+		newCore.nodeId = toNode.id
 	}
 
 	// Update the contents of the nodes to reflect the move.
@@ -119,7 +128,7 @@ func (m *Model) WithMove(core *Core, toNode *Node) *Model {
 }
 
 type permutation struct {
-	score float64
+	cost  float64
 	model *Model
 	move  *Move
 }
@@ -152,11 +161,15 @@ func (m *Model) computeNextMoveShard(immobileCores map[string]bool, shard int, s
 			count += 1
 			if count%shardCount == shard {
 				mPrime := m.WithMove(core, toNode)
-				c <- &permutation{
-					score: mPrime.Score(),
+				move := &permutation{
+					cost:  mPrime.Cost(),
 					model: mPrime,
 					move:  &Move{Core: core, FromNode: fromNode, ToNode: toNode},
 				}
+				if debug {
+					fmt.Printf("move cost: %f: %s\n", move.cost, move.move)
+				}
+				c <- move
 			}
 		}
 	}
@@ -196,9 +209,12 @@ func (m *Model) countPerms(immobileCores map[string]bool) int {
 
 func (m *Model) ComputeNextMove(numCPU int, immobileCores map[string]bool) (*Model, *Move) {
 	best := &permutation{
-		score: m.Score(),
+		cost:  m.Cost(),
 		model: m,
 		move:  nil,
+	}
+	if debug {
+		fmt.Printf("base model cost: %f\n", best.cost)
 	}
 
 	// Try moving every core to every other node, find the best score.
@@ -213,27 +229,15 @@ func (m *Model) ComputeNextMove(numCPU int, immobileCores map[string]bool) (*Mod
 		if move == nil {
 			continue // sentinel
 		}
-		if move.score > best.score {
+		if move.cost < best.cost {
 			best = move
 		}
 	}
 
+	if debug {
+		fmt.Printf("best move cost: %f: %s\n", best.cost, best.move)
+	}
 	return best.model, best.move
-}
-
-// Create a composite score fot the model, based on hard-coded rules.
-// Higher score is better.
-func (m *Model) Score() float64 {
-	weighted := make([]float64, len(Rules))
-	for i, rule := range Rules {
-		score := rule.Score(m)
-		weighted[i] = score * rule.GetWeight()
-	}
-	var score float64
-	for _, w := range weighted {
-		score += w
-	}
-	return score
 }
 
 type Node struct {
@@ -242,31 +246,34 @@ type Node struct {
 	Docs      float64 `json:"docs"`
 	Size      float64 `json:"size"` // in bytes
 	coreCount int
+	id        int // unique id of this node for internal tracking
+
+	cost float64 // cached cost
 }
 
 func (n *Node) Add(core *Core) {
 	n.Docs += core.Docs
 	n.Size += core.Size
 	n.coreCount += 1
-	core.nodeId = n.Address
+	core.nodeId = n.id
 }
 
 func (n *Node) Contains(core *Core) bool {
-	return core.nodeId == n.Address
+	return core.nodeId == n.id
 }
 
 func (n *Node) With(core *Core) *Node {
 	if !n.Contains(core) {
-		panic(fmt.Sprintf("core %s assigned to %s cannot be added to %s", core.Name, core.nodeId, n.Address))
+		panic(fmt.Sprintf("core %s assigned to %d cannot be added to %d", core.Name, core.nodeId, n.id))
 	}
 
-	return &Node{
-		Name:      n.Name,
-		Address:   n.Address,
-		Docs:      n.Docs + core.Docs,
-		Size:      n.Size + core.Size,
-		coreCount: n.coreCount + 1,
-	}
+	nCopy := *n
+	nCopy.cost = 0
+
+	nCopy.Docs += core.Docs
+	nCopy.Size += core.Size
+	nCopy.coreCount++
+	return &nCopy
 }
 
 func (n *Node) Without(core *Core) *Node {
@@ -274,13 +281,13 @@ func (n *Node) Without(core *Core) *Node {
 		return n
 	}
 
-	return &Node{
-		Name:      n.Name,
-		Address:   n.Address,
-		Docs:      n.Docs - core.Docs,
-		Size:      n.Size - core.Size,
-		coreCount: n.coreCount - 1,
-	}
+	nCopy := *n
+	nCopy.cost = 0
+
+	nCopy.Docs -= core.Docs
+	nCopy.Size -= core.Size
+	nCopy.coreCount--
+	return &nCopy
 }
 
 type Collection struct {
@@ -288,6 +295,8 @@ type Collection struct {
 	Docs  float64 `json:"docs"`
 	Size  float64 `json:"size"` // in bytes
 	cores []*Core
+
+	cost float64 // cached cost
 }
 
 func (c *Collection) Add(core *Core) {
@@ -349,7 +358,7 @@ type Core struct {
 	Shard      string  `json:"shard"`
 	Docs       float64 `json:"docs"`
 	Size       float64 `json:"size"` // in bytes
-	nodeId     string  // the node I currently belong to
+	nodeId     int     // the node I currently belong to
 }
 
 func (c *Core) shardName() string {

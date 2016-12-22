@@ -448,7 +448,7 @@ func createModel(clusterState *solrmanapi.SolrmanStatusResponse) (*smmodel.Model
 			return nil, errorf("already seen: %v", nodeStatus.NodeName)
 		}
 		seenNodeNames[nodeStatus.NodeName] = true
-		m.Nodes = append(m.Nodes, currentNode)
+		m.AddNode(currentNode)
 
 		for _, coreStatus := range nodeStatus.Cores {
 			collName := coreStatus.Collection
