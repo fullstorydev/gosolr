@@ -36,19 +36,6 @@ type bounds struct {
 	err error
 }
 
-// HashRangeShare returns the faction (from 0 to 1) of the total hash range (of the shard's collection) that this shard
-// is responsible for.
-func (s ShardState) HashRangeShare() float64 {
-	low, high, err := s.RangeBounds()
-	if err != nil {
-		return 0
-	}
-
-	// Use int64 to hold differences larger than 32 bits can hold.
-	used := int64(high) - int64(low)
-	return float64(used) / 0x100000000
-}
-
 func (s ShardState) IsActive() bool {
 	return s.State == "active"
 }

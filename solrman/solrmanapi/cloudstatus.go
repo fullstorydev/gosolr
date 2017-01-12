@@ -23,15 +23,15 @@ type SolrNodeStatus struct {
 }
 
 type SolrCoreStatus struct {
-	Name           string
-	NodeName       string  // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
-	Collection     string  // collection name (which is our case is always [orgId]-v[version])
-	Shard          string  // shard name (e.g. "shard1")
-	ShardState     string  // e.g. "active", "inactive"
-	Replica        string  // replica name (e.g. "core_node_2")
-	ReplicaState   string  // e.g. "active", "inactive", "recovering", "down"
-	IsLeader       bool    // whether this replica is the leader of its shard
-	NumDocs        int64   // total number of indexed documents
-	IndexSize      int64   // in bytes
-	HashRangeShare float64 // what fraction of the collection's hash range is mapped to this shard
+	Name         string
+	NodeName     string // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
+	Collection   string // collection name (which is our case is always [orgId]-v[version])
+	Shard        string // shard name (e.g. "shard1")
+	ShardState   string // e.g. "active", "inactive"
+	Range        string // // e.g. "80000000-b332ffff"
+	Replica      string // replica name (e.g. "core_node_2")
+	ReplicaState string // e.g. "active", "inactive", "recovering", "down"
+	IsLeader     bool   // whether this replica is the leader of its shard
+	NumDocs      int64  // total number of indexed documents
+	IndexSize    int64  // in bytes
 }
