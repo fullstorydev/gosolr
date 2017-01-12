@@ -158,17 +158,17 @@ func (s *SolrManService) getNodeStatus(solrNode string, cluster solrmonitor.Clus
 			for replicaName, replica := range shard.Replicas {
 				if replica.NodeName == solrNode {
 					rsp.Cores[replica.Core] = &solrmanapi.SolrCoreStatus{
-						Name:           replica.Core,
-						NodeName:       solrNode,
-						Collection:     collName,
-						Shard:          shardName,
-						ShardState:     shard.State,
-						Replica:        replicaName,
-						ReplicaState:   replica.State,
-						IsLeader:       replica.IsLeader(),
-						NumDocs:        -1,
-						IndexSize:      -1,
-						HashRangeShare: collState.Shards[shardName].HashRangeShare(),
+						Name:         replica.Core,
+						NodeName:     solrNode,
+						Collection:   collName,
+						Shard:        shardName,
+						ShardState:   shard.State,
+						Range:        collState.Shards[shardName].Range,
+						Replica:      replicaName,
+						ReplicaState: replica.State,
+						IsLeader:     replica.IsLeader(),
+						NumDocs:      -1,
+						IndexSize:    -1,
 					}
 
 					if core, ok := coreStatusRsp.Status[replica.Core]; ok {
