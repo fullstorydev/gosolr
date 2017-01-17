@@ -50,7 +50,6 @@ type ZkDispatcher struct {
 	selectCases    []reflect.SelectCase // the list of event channels to watch
 	selectHandlers []ZkEventCallback    // the list of handlers associated with each event channel
 	runningProcs   int32                // for testing
-	closed         int32                // interpreted as bool, defined as int32 for atomic ops
 	closedChan     chan struct{}        // signals exit
 	newHandlerChan chan newHandler      // sends new handlers to the event loop
 
@@ -83,10 +82,6 @@ func NewZkDispatcher(logger zk.Logger) *ZkDispatcher {
 }
 
 func (d *ZkDispatcher) Close() {
-	if !atomic.CompareAndSwapInt32(&d.closed, 0, 1) {
-		panic("already closed")
-	}
-
 	close(d.closedChan)
 }
 
@@ -94,15 +89,21 @@ var errClosed = errors.New("already closed")
 
 // Watch a new ZK event using the given callback to handle the event.
 func (d *ZkDispatcher) WatchEvent(watcher <-chan zk.Event, handler ZkEventCallback) error {
-	if atomic.LoadInt32(&d.closed) != 0 {
-		return errClosed
-	}
+	// Check for closure first
 	select {
-	case d.newHandlerChan <- newHandler{watcher, handler}:
-		return nil
 	case <-d.closedChan:
 		return errClosed
+	default:
+		break
+	}
+
+	select {
+	case <-d.closedChan:
+		return errClosed
+	case d.newHandlerChan <- newHandler{watcher, handler}:
+		return nil
 	case <-time.After(10 * time.Second):
+		// Escape hatch to avoid deadlock
 		panic("channel is full")
 	}
 	return nil
