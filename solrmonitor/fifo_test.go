@@ -62,11 +62,23 @@ func TestFifoRingBufferMaintenance(t *testing.T) {
 	for q.size > 0 {
 		checkRemove(q, t, &removed)
 	}
+
+	// ensure that we don't leak any references in underlying slice after removing from queue
+	for idx, task := range q.slice {
+		if !isEmpty(task) {
+			t.Errorf("Entry in queue at index %d was not cleared: %v", idx, task)
+		}
+	}
 }
 
 func equals(task1, task2 zkDispatchTask) bool {
 	// function types are not comparable; we really only need to care about the events
 	return task1.event == task2.event
+}
+
+func isEmpty(task zkDispatchTask) bool {
+	var empty zkDispatchTask
+	return equals(empty, task)
 }
 
 func checkRemove(q *fifoTaskQueue, t *testing.T, removeCount *int) {

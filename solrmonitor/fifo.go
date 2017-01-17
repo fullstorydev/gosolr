@@ -61,6 +61,10 @@ func (q *fifoTaskQueue) poll() (polled zkDispatchTask, ok bool) {
 		return
 	} else {
 		polled = q.slice[q.head]
+		// clear the entry in the queue so we don't leak references to
+		// things like the callback (and also allow strings in the event
+		// to be promptly GCed)
+		q.slice[q.head] = zkDispatchTask{}
 		ok = true
 	}
 	q.head = (q.head + 1) % len(q.slice)
