@@ -118,8 +118,7 @@ func (d *ZkDispatcher) eventLoop() {
 
 	for {
 		// first try to drain any new handlers, bailing if dispatcher is closed
-		done := false
-		for !done {
+		for done := false; !done; {
 			select {
 			case nh := <- d.newHandlerChan:
 				d.selectHandlers = append(d.selectHandlers, nh.handler)
