@@ -117,6 +117,27 @@ func (d *ZkDispatcher) eventLoop() {
 	defer atomic.AddInt32(&d.runningProcs, -1)
 
 	for {
+		// first try to drain any new handlers, bailing if dispatcher is closed
+		done := false
+		closing := false
+		for !done && !closing {
+			select {
+			case nh := <- d.newHandlerChan:
+				d.selectHandlers = append(d.selectHandlers, nh.handler)
+				d.selectCases = append(d.selectCases, newCase(nh.watcher))
+			case <- d.closedChan:
+				closing = true
+				d.logger.Printf("zkdispatcher: exiting via close channel")
+			default:
+				done = true // nothing else waiting
+			}
+		}
+
+		if closing {
+			break
+		}
+
+		// then try to select an event from one of the watched channels
 		chosen, recv, _ := reflect.Select(d.selectCases)
 		if chosen == 0 {
 			// closing.
