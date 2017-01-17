@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"fs/fstesting"
+
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -114,7 +116,10 @@ func TestReregistration(t *testing.T) {
 	state.done.Add(1)
 
 	channel := make(chan zk.Event, 1)
-	disp.WatchEvent(channel, cb)
+	if err := disp.WatchEvent(channel, cb); err != nil {
+		fstesting.Ok(t, err, "failed to watch")
+	}
+
 
 	channel <- state.gen.newEvent()
 	state.done.Wait()
@@ -138,7 +143,9 @@ func TestDispatchesToSameCallbackAreSerial(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		state.done.Add(1)
 		channels[i] = make(chan zk.Event, 1)
-		disp.WatchEvent(channels[i], cb)
+		if err := disp.WatchEvent(channels[i], cb); err != nil {
+			fstesting.Ok(t, err, "failed to watch")
+		}
 	}
 
 	// send an event to get them started
@@ -209,7 +216,9 @@ func TestDispatchesToDifferentCallbacksAreConcurrent(t *testing.T) {
 		callbacks[i] = state.newCallback(10)
 		state.done.Add(1)
 		channels[i] = make(chan zk.Event, 1)
-		disp.WatchEvent(channels[i], callbacks[i])
+		if err := disp.WatchEvent(channels[i], callbacks[i]); err != nil {
+			fstesting.Ok(t, err, "failed to watch")
+		}
 	}
 
 	// send an event to get them started

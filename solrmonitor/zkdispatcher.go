@@ -50,10 +50,9 @@ type ZkDispatcher struct {
 	selectCases    []reflect.SelectCase // the list of event channels to watch
 	selectHandlers []ZkEventCallback    // the list of handlers associated with each event channel
 	runningProcs   int32                // for testing
-
-	chanMu     sync.Mutex
-	isClosed   bool
-	selectChan chan newHandler // sends new handlers to the event loop, or signals exit
+	closed         int32                // interpreted as bool, defined as int32 for atomic ops
+	closedChan     chan struct{}        // signals exit
+	newHandlerChan chan newHandler      // sends new handlers to the event loop
 
 	taskMu sync.Mutex
 	tasks  map[ZkEventCallback]*fifoTaskQueue
@@ -65,47 +64,45 @@ type newHandler struct {
 }
 
 func NewZkDispatcher(logger zk.Logger) *ZkDispatcher {
-	selectChan := make(chan newHandler, 64)
+	closedChan := make(chan struct{})
+	newHandlerChan := make(chan newHandler, 1024)
 	d := &ZkDispatcher{
-		logger:     logger,
-		selectChan: selectChan,
+		logger:         logger,
+		closedChan:     closedChan,
+		newHandlerChan: newHandlerChan,
 		selectCases: []reflect.SelectCase{
-			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(selectChan)},
+			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(closedChan)},
+			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(newHandlerChan)},
 		},
-		selectHandlers: []ZkEventCallback{
-			nil, // No handler for case 0, it's the special exit handler.
-		},
-		runningProcs: 1,
-		tasks:        make(map[ZkEventCallback]*fifoTaskQueue),
+		selectHandlers: []ZkEventCallback{nil, nil}, // first two correspond to close and new handler channels
+		runningProcs:   1,
+		tasks:          make(map[ZkEventCallback]*fifoTaskQueue),
 	}
 	go d.eventLoop()
 	return d
 }
 
 func (d *ZkDispatcher) Close() {
-	d.chanMu.Lock()
-	defer d.chanMu.Unlock()
-	if d.isClosed {
+	if !atomic.CompareAndSwapInt32(&d.closed, 0, 1) {
 		panic("already closed")
 	}
-	d.isClosed = true
-	close(d.selectChan)
+
+	close(d.closedChan)
 }
 
 var errClosed = errors.New("already closed")
 
 // Watch a new ZK event using the given callback to handle the event.
 func (d *ZkDispatcher) WatchEvent(watcher <-chan zk.Event, handler ZkEventCallback) error {
-	d.chanMu.Lock()
-	defer d.chanMu.Unlock()
-	if d.isClosed {
+	if atomic.LoadInt32(&d.closed) != 0 {
 		return errClosed
 	}
-
 	select {
-	case d.selectChan <- newHandler{watcher, handler}:
+	case d.newHandlerChan <- newHandler{watcher, handler}:
 		return nil
-	case <-time.After(5 * time.Second):
+	case <-d.closedChan:
+		return errClosed
+	case <-time.After(10 * time.Second):
 		panic("channel is full")
 	}
 	return nil
@@ -120,19 +117,32 @@ func (d *ZkDispatcher) eventLoop() {
 	defer atomic.AddInt32(&d.runningProcs, -1)
 
 	for {
-		chosen, recv, recvOK := reflect.Select(d.selectCases)
-		if chosen == 0 {
-			if recvOK {
-				// New handler
-				nh := recv.Interface().(newHandler)
+		// first try to drain any new handlers, bailing if dispatcher is closed
+		for done := false; !done; {
+			select {
+			case nh := <- d.newHandlerChan:
 				d.selectHandlers = append(d.selectHandlers, nh.handler)
 				d.selectCases = append(d.selectCases, newCase(nh.watcher))
-				continue
-			} else {
-				// closing.
+			case <- d.closedChan:
 				d.logger.Printf("zkdispatcher: exiting via close channel")
-				break
+				return
+			default:
+				done = true // nothing else waiting
 			}
+		}
+
+		// then try to select an event from one of the watched channels
+		chosen, recv, _ := reflect.Select(d.selectCases)
+		if chosen == 0 {
+			// closing.
+			d.logger.Printf("zkdispatcher: exiting via close channel")
+			return
+		} else if chosen == 1 {
+			// New handler
+			nh := recv.Interface().(newHandler)
+			d.selectHandlers = append(d.selectHandlers, nh.handler)
+			d.selectCases = append(d.selectCases, newCase(nh.watcher))
+			continue
 		} else {
 			evt := recv.Interface().(zk.Event)
 			if evt.Type == 0 || evt.Err == zk.ErrClosing {
