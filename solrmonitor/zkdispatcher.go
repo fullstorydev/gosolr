@@ -120,10 +120,10 @@ func (d *ZkDispatcher) eventLoop() {
 		// first try to drain any new handlers, bailing if dispatcher is closed
 		for done := false; !done; {
 			select {
-			case nh := <- d.newHandlerChan:
+			case nh := <-d.newHandlerChan:
 				d.selectHandlers = append(d.selectHandlers, nh.handler)
 				d.selectCases = append(d.selectCases, newCase(nh.watcher))
-			case <- d.closedChan:
+			case <-d.closedChan:
 				d.logger.Printf("zkdispatcher: exiting via close channel")
 				return
 			default:
