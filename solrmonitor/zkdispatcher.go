@@ -89,12 +89,21 @@ var errClosed = errors.New("already closed")
 
 // Watch a new ZK event using the given callback to handle the event.
 func (d *ZkDispatcher) WatchEvent(watcher <-chan zk.Event, handler ZkEventCallback) error {
+	// Check for closure first
 	select {
-	case d.newHandlerChan <- newHandler{watcher, handler}:
-		return nil
 	case <-d.closedChan:
 		return errClosed
+	default:
+		break
+	}
+
+	select {
+	case <-d.closedChan:
+		return errClosed
+	case d.newHandlerChan <- newHandler{watcher, handler}:
+		return nil
 	case <-time.After(10 * time.Second):
+		// Escape hatch to avoid deadlock
 		panic("channel is full")
 	}
 	return nil
