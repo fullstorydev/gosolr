@@ -15,11 +15,15 @@
 package solrmonitor
 
 type CollectionState struct {
-	AutoAddReplicas   string                `json:"autoAddReplicas"`   // e.g. "false" (yes, these are strings, not bools)
 	Shards            map[string]ShardState `json:"shards"`            // map from shard name to shard state
-	MaxShardsPerNode  string                `json:"maxShardsPerNode"`  // e.g. "1" (yes, these are strings, not numbers)
 	ReplicationFactor string                `json:"replicationFactor"` // e.g. "1" (yes, these are strings, not numbers)
-	// we don't bother parse this b/c we don't need it:  "router":{"name":"compositeId"},
+	Router            Router                `json:"router"`            // e.g. {"name":"compositeId"}
+	MaxShardsPerNode  string                `json:"maxShardsPerNode"`  // e.g. "1" (yes, these are strings, not numbers)
+	AutoAddReplicas   string                `json:"autoAddReplicas"`   // e.g. "false" (yes, these are strings, not bools)
+}
+
+type Router struct {
+	Name string `json:"name"` // e.g. "compositeId"
 }
 
 // LookupCore finds and returns the replica with the given core name, if one exists.

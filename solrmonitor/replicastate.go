@@ -15,10 +15,10 @@
 package solrmonitor
 
 type ReplicaState struct {
-	State    string `json:"state"`     // e.g. "active", "inactive", "down", "recovering"
 	Core     string `json:"core"`      // e.g. "delta_shard1_replica1"
-	NodeName string `json:"node_name"` // e.g. "10.240.110.3:8983_solr"
 	BaseUrl  string `json:"base_url"`  // e.g. "http://10.240.110.3:8983/solr"
+	NodeName string `json:"node_name"` // e.g. "10.240.110.3:8983_solr"
+	State    string `json:"state"`     // e.g. "active", "inactive", "down", "recovering"
 	Leader   string `json:"leader"`    // e.g. "true" or "false" (yes, these are strings, not bools)
 }
 
