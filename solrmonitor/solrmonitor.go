@@ -192,8 +192,9 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
 		_, found := c.collections[name]
 		if !found {
 			coll := &collection{
-				name:   name,
-				parent: c,
+				name:          name,
+				parent:        c,
+				zkNodeVersion: -1,
 			}
 			wg.Add(1)
 			go func() {
@@ -220,11 +221,12 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) {
 
 // Represents an individual collection.
 type collection struct {
-	mu        sync.RWMutex
-	name      string       // the name of the collection
-	stateData string       // the current state.json data, or empty if no state.json node exists
-	parent    *SolrMonitor // if nil, this collection object was removed from the ClusterState
-	isClosed  bool
+	mu            sync.RWMutex
+	name          string       // the name of the collection
+	stateData     string       // the current state.json data, or empty if no state.json node exists
+	zkNodeVersion int32        // the version of the state.json data, or -1 if no state.json node exists
+	parent        *SolrMonitor // if nil, this collection object was removed from the ClusterState
+	isClosed      bool
 
 	cachedState *parsedCollectionState // cached of the current parsed stateData if non-nil
 }
@@ -249,7 +251,7 @@ func (coll *collection) GetData() (*CollectionState, error) {
 
 			// Could have been initialized in between our first read and getting the write lock.
 			if coll.cachedState == nil {
-				coll.cachedState = parseStateData(coll.name, []byte(coll.stateData))
+				coll.cachedState = parseStateData(coll.name, []byte(coll.stateData), coll.zkNodeVersion)
 			}
 
 			return coll.cachedState
@@ -259,7 +261,7 @@ func (coll *collection) GetData() (*CollectionState, error) {
 	return cachedState.collectionState, cachedState.err
 }
 
-func parseStateData(name string, data []byte) *parsedCollectionState {
+func parseStateData(name string, data []byte, version int32) *parsedCollectionState {
 	if len(data) == 0 {
 		return &parsedCollectionState{}
 	}
@@ -280,7 +282,9 @@ func parseStateData(name string, data []byte) *parsedCollectionState {
 		return &parsedCollectionState{err: err}
 	}
 
-	return &parsedCollectionState{collectionState: state[name]}
+	collState := state[name]
+	collState.ZkNodeVersion = version
+	return &parsedCollectionState{collectionState: collState}
 }
 
 func (coll *collection) start() {
@@ -289,12 +293,12 @@ func (coll *collection) start() {
 	logger := coll.parent.logger
 	zkCli := coll.parent.zkCli
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-	data, collWatch, err := getDataAndWatch(zkCli, path)
+	data, version, collWatch, err := getDataAndWatch(zkCli, path)
 	if err != nil {
 		logger.Printf("collection %s: error getting data: %s", coll.name, err)
 		return
 	}
-	coll.setData(data)
+	coll.setData(data, version)
 	coll.monitorData(path, collWatch)
 }
 
@@ -319,7 +323,7 @@ func (coll *collection) monitorData(path string, watcher <-chan zk.Event) {
 		logger := coll.parent.logger
 		zkCli := coll.parent.zkCli
 		logger.Printf("solrmonitor data %s: %s", path, evt)
-		data, newWatcher, err := getDataAndWatch(zkCli, path)
+		data, version, newWatcher, err := getDataAndWatch(zkCli, path)
 		if err != nil {
 			if err != zk.ErrClosing {
 				logger.Printf("solrmonitor %s: error getting data: %s", path, err)
@@ -329,17 +333,18 @@ func (coll *collection) monitorData(path string, watcher <-chan zk.Event) {
 		}
 		coll.mu.Lock()
 		defer coll.mu.Unlock()
-		coll.setData(data)
+		coll.setData(data, version)
 		return newWatcher
 	}
 	coll.parent.dispatcher.Watch(watcher, f)
 }
 
-func (coll *collection) setData(data string) {
+func (coll *collection) setData(data string, version int32) {
 	if data == "" {
 		coll.parent.logger.Printf("%s: no data", coll.name)
 	}
 	coll.stateData = data
+	coll.zkNodeVersion = version
 	coll.cachedState = nil
 }
 
@@ -370,28 +375,28 @@ func getChildrenAndWatch(zkCli ZkCli, path string) ([]string, <-chan zk.Event, e
 	}
 }
 
-func getDataAndWatch(zkCli ZkCli, path string) (string, <-chan zk.Event, error) {
+func getDataAndWatch(zkCli ZkCli, path string) (string, int32, <-chan zk.Event, error) {
 	for {
-		data, _, dataWatch, err := zkCli.GetW(path)
+		data, stat, dataWatch, err := zkCli.GetW(path)
 		if err == nil {
 			// Success, we're done.
-			return string(data), dataWatch, nil
+			return string(data), stat.Version, dataWatch, nil
 		}
 
 		if err == zk.ErrNoNode {
 			// Node doesn't exist; add an existence watch.
 			exists, _, existsWatch, err := zkCli.ExistsW(path)
 			if err != nil {
-				return "", nil, err
+				return "", -1, nil, err
 			}
 			if exists {
 				// Improbable, but possible; first we checked and it wasn't there, then we checked and it was.
 				// Just loop and try again.
 				continue
 			}
-			return "", existsWatch, nil
+			return "", -1, existsWatch, nil
 		}
 
-		return "", nil, err
+		return "", -1, nil, err
 	}
 }

@@ -37,6 +37,7 @@ type SolrManService struct {
 	ZooClient   *zk.Conn
 	RedisPool   *redis.Pool
 	Logger      Logger
+	Audit       Audit
 	solrClient  *SolrClient
 
 	mu            sync.Mutex
@@ -442,4 +443,23 @@ func jsonString(val interface{}) string {
 		panic(err.Error())
 	}
 	return string(b)
+}
+
+// Disables solrman
+func (s *SolrManService) disable() {
+	conn := s.RedisPool.Get()
+	defer conn.Close()
+	if result, err := conn.Do("GET", DisableRedisKey); err != nil {
+		s.Logger.Errorf("failed to query redis for disabled state: %s", err)
+		return
+	} else if result != nil {
+		return // already disabled, nothing to do
+	}
+
+	if _, err := conn.Do("SET", DisableRedisKey, "1"); err != nil {
+		s.Logger.Errorf("failed to set disabled state is redis: %s", err)
+		return
+	}
+
+	s.Logger.Alertf("automatically disabling after encountering operation error; see logs for details")
 }

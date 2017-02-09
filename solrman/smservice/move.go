@@ -72,6 +72,32 @@ func (s *SolrManService) doRunMoveOperation(move *solrmanapi.OpRecord) error {
 		replicas = shard.Replicas
 	}
 
+	s.Audit.BeforeOp(*move, *coll)
+	lastZkVersion := coll.ZkNodeVersion
+	success := false
+	defer func() {
+		var newCollState *solrmonitor.CollectionState
+		for retry := 0; retry < 3; retry++ {
+			var err error
+			if newCollState, err = s.SolrMonitor.GetCollectionState(move.Collection); err != nil {
+				s.Logger.Errorf("failed to retrieve collection state after op %s: %s", move, err)
+				return
+			} else {
+				if newCollState.ZkNodeVersion > lastZkVersion {
+					break
+				}
+			}
+			// Haven't seen an update yet, wait a little and try again.
+			time.Sleep(5 * time.Second)
+		}
+		if success {
+			s.Audit.SuccessOp(*move, *newCollState)
+		} else {
+			s.Audit.FailedOp(*move, *newCollState)
+			s.disable()
+		}
+	}()
+
 	// Add a replica if none exists.
 	// TODO: scottb handle timeout separately from other failures, we should loop and retry?
 	if replica := findReplica(replicas, move.DstNode, anyReplica); replica == "" {
@@ -96,6 +122,8 @@ func (s *SolrManService) doRunMoveOperation(move *solrmanapi.OpRecord) error {
 			if replica := findReplica(replicas, move.DstNode, activeReplica); replica != "" {
 				// found a good replica!  sync complete
 				s.Logger.Debugf("active replica %q found on %s - time to delete the original", replica, move.DstNode)
+				s.Audit.SuccessOp(*move, *coll) // should log state where both replicas exist
+				lastZkVersion = coll.ZkNodeVersion
 				break
 			}
 		}
@@ -113,5 +141,6 @@ func (s *SolrManService) doRunMoveOperation(move *solrmanapi.OpRecord) error {
 		return cherrf(err, "failed to issue DELETEREPLICA command")
 	}
 	s.Logger.Debugf("DELETEREPLICA command issued successfully MoveShard request: %s", move)
+	success = true
 	return nil
 }

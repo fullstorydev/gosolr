@@ -39,6 +39,7 @@ const (
 // Runs the main solr management loop, never returns.
 func (s *SolrManService) RunSolrMan() {
 	s.setStatusOp("solrman is starting up")
+	clusterStateGolden := true // assume true to start
 
 	first := true
 	for {
@@ -88,26 +89,18 @@ func (s *SolrManService) RunSolrMan() {
 		}
 
 		problems := listClusterProblems(s.Logger, clusterState, liveNodes)
-
 		if len(problems) > 0 {
-			s.Logger.Warningf("cluster state is not golden, trying to fix...")
-			// TODO(scottb): disabled for now.
-			// Try to goldenize it. Use Midas' finger or sorcerer's stone
-			// solveClusterProblems(s.Logger, clusterState, s.solrClient, problems)
-
-			// Remove any problem nodes from the model and operate on a reduced cluster
-			for _, problem := range problems {
-				node := problem.Node
-				if _, ok := clusterState.SolrNodes[node]; ok {
-					s.Logger.Warningf("removing bad node %s from model", node)
-					delete(clusterState.SolrNodes, node)
-				}
+			if clusterStateGolden {
+				s.Logger.Alertf("cluster state became not golden; see logs for details")
+				clusterStateGolden = false
 			}
+			s.Logger.Warningf("cluster state is not golden, skipping; see logs for details")
+			continue
+		}
 
-			if len(clusterState.SolrNodes) < 1 {
-				s.setStatusOp("no healthy nodes, skipping; see logs for details")
-				continue
-			}
+		if !clusterStateGolden {
+			s.Logger.Alertf("cluster state became golden; resuming operation")
+			clusterStateGolden = true
 		}
 
 		badlyBalancedOrgs := flagBadlyBalancedOrgs(s.Logger, s, clusterState)
@@ -255,23 +248,6 @@ func listClusterProblems(logger Logger, clusterState *solrmanapi.SolrmanStatusRe
 		}
 	}
 	return problems
-}
-
-func solveClusterProblems(logger Logger, clusterState *solrmanapi.SolrmanStatusResponse, solrc *SolrClient, problems []*ClusterProblem) {
-	logger.Infof("Solving problems of cluster...")
-	for _, p := range problems {
-		switch p.Problem {
-		case ProblemInactive, ProblemConstruction:
-			// delete the shard
-			if err := solrc.DeleteShard(p.Collection, p.Shard); err != nil {
-				logger.Errorf("failed to delete shard %q of collection %q: %s", p.Shard, p.Collection, err)
-			} else {
-				logger.Debugf("deleted shard %q of collection %q", p.Shard, p.Collection)
-			}
-		case ProblemNodedown, ProblemNegativeIndexSize, ProblemNegativeNumDocs, ProblemShardDown:
-			// nop | don't know | don't care | etc.
-		}
-	}
 }
 
 type SplitShardRequestWithSize struct {

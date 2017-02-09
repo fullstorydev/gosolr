@@ -69,6 +69,7 @@ func run(logger *log.Logger) error {
 
 	zkLogger := &zookeeperLogger{logger: logger}
 	smLogger := &solrmanLogger{logger: logger}
+	smAudit := &solrmanAudit{logger: logger}
 
 	// Solrman makes a lot of requests to Solr; without increasing MaxIdleConnsPerHost we can run out of available sockets,
 	// which manifests as errors of the form "cannot assign requested address"
@@ -113,6 +114,7 @@ func run(logger *log.Logger) error {
 		ZooClient:   zooClient,
 		RedisPool:   redisPool,
 		Logger:      smLogger,
+		Audit:       smAudit,
 	}
 
 	solrManService.Init()
@@ -306,6 +308,36 @@ func (l *solrmanLogger) Warningf(format string, args ...interface{}) {
 
 func (l *solrmanLogger) Errorf(format string, args ...interface{}) {
 	l.logger.Printf("ERROR: "+format, args...)
+}
+
+func (l *solrmanLogger) Alertf(format string, args ...interface{}) {
+	l.logger.Printf("ALERT: "+format, args...)
+}
+
+type solrmanAudit struct {
+	logger *log.Logger
+}
+
+var _ smservice.Audit = &solrmanAudit{}
+
+func (a *solrmanAudit) BeforeOp(op solrmanapi.OpRecord, collState solrmonitor.CollectionState) {
+	a.recordOp("BeforeOp", &op, &collState)
+}
+
+func (a *solrmanAudit) SuccessOp(op solrmanapi.OpRecord, collState solrmonitor.CollectionState) {
+	a.recordOp("SuccessOp", &op, &collState)
+}
+
+func (a *solrmanAudit) FailedOp(op solrmanapi.OpRecord, collState solrmonitor.CollectionState) {
+	a.recordOp("FailedOp", &op, &collState)
+}
+
+func (a *solrmanAudit) recordOp(opState string, op *solrmanapi.OpRecord, collState *solrmonitor.CollectionState) {
+	if json, err := json.MarshalIndent(collState, "", "  "); err != nil {
+		a.logger.Printf("Error marshaling collState for %s %s, Version %d: %s", opState, op, collState.ZkNodeVersion, err)
+	} else {
+		a.logger.Printf("%s: %s, Version %d:\n%s", opState, op, collState.ZkNodeVersion, string(json))
+	}
 }
 
 func NewZkConn(logger zk.Logger, servers []string) (*zk.Conn, error) {
