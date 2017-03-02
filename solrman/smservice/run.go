@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fullstorydev/gosolr/solrcheck"
 	"github.com/fullstorydev/gosolr/solrman/smmodel"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/samuel/go-zookeeper/zk"
@@ -74,22 +75,25 @@ func (s *SolrManService) RunSolrMan() {
 			continue
 		}
 
-		clusterState, err := s.ClusterState()
+		clusterState, err := s.SolrMonitor.GetCurrentState()
 		if err != nil {
 			s.setStatusOp("failed to retrieve cluster state")
 			s.Logger.Errorf("failed to retrieve cluster state: %s", err)
 			continue
 		}
-
 		liveNodes, err := s.SolrMonitor.GetLiveNodes()
 		if err != nil {
 			s.setStatusOp("failed to retrieve live nodes")
 			s.Logger.Errorf("failed to retrieve live nodes: %s", err)
 			continue
 		}
+		solrStatus := s.getLiveNodesStatuses(liveNodes, clusterState)
 
-		problems := listClusterProblems(s.Logger, clusterState, liveNodes)
+		problems := solrcheck.FindClusterProblems(s.ZooClient, clusterState, solrStatus, liveNodes)
 		if len(problems) > 0 {
+			for _, p := range problems {
+				s.Logger.Infof("PROBLEM: %v", p)
+			}
 			if clusterStateGolden {
 				s.Logger.Alertf("cluster state became not golden; see logs for details")
 				clusterStateGolden = false
@@ -103,12 +107,12 @@ func (s *SolrManService) RunSolrMan() {
 			clusterStateGolden = true
 		}
 
-		badlyBalancedOrgs := flagBadlyBalancedOrgs(s.Logger, s, clusterState)
+		badlyBalancedOrgs := flagBadlyBalancedOrgs(s.Logger, s, solrStatus)
 		if len(badlyBalancedOrgs) > 0 {
 			s.Logger.Warningf(fmt.Sprintf("There are %d orgs with badly balanced shards.", len(badlyBalancedOrgs)))
 		}
 
-		shardSplits := computeShardSplits(s, clusterState)
+		shardSplits := computeShardSplits(s, solrStatus)
 		anySplits := false
 		for _, shardSplit := range shardSplits {
 			if _, ok := badlyBalancedOrgs[shardSplit.Collection]; ok {
@@ -134,7 +138,7 @@ func (s *SolrManService) RunSolrMan() {
 
 		// Long-running computation!
 		s.setStatusOp("computing shard moves")
-		shardMoves, err := computeShardMoves(clusterState, movesPerCycle)
+		shardMoves, err := computeShardMoves(solrStatus, movesPerCycle)
 		if err != nil {
 			s.setStatusOp("failed to compute shard moves")
 			s.Logger.Errorf("failed to compute shard moves: %s", err)
@@ -199,57 +203,6 @@ func (s *SolrManService) setStatusOp(status string) {
 	}
 }
 
-const (
-	ProblemInactive          = "inactive"
-	ProblemConstruction      = "construction"
-	ProblemNodedown          = "nodeDown"
-	ProblemShardDown         = "down"
-	ProblemNegativeNumDocs   = "negativeNumDocs"
-	ProblemNegativeIndexSize = "negativeIndexSize"
-)
-
-type ClusterProblem struct {
-	Node       string
-	Collection string
-	Shard      string
-	Problem    string
-}
-
-func listClusterProblems(logger Logger, clusterState *solrmanapi.SolrmanStatusResponse, liveNodes []string) []*ClusterProblem {
-	liveNodeSet := map[string]bool{}
-	for _, liveNode := range liveNodes {
-		liveNodeSet[liveNode] = true
-	}
-	problems := make([]*ClusterProblem, 0)
-
-	for _, nodeStatus := range clusterState.SolrNodes {
-		if !liveNodeSet[nodeStatus.NodeName] {
-			logger.Warningf("%s not found in liveNodeSet", nodeStatus.NodeName)
-			problems = append(problems, &ClusterProblem{nodeStatus.NodeName, "", "", ProblemNodedown})
-			return problems
-		}
-		for _, coreStatus := range nodeStatus.Cores {
-			if coreStatus.ShardState != "active" {
-				logger.Debugf("%s:%s_%s shard in state: %s", coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, coreStatus.ShardState)
-				problems = append(problems, &ClusterProblem{coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, coreStatus.ShardState})
-			}
-			if coreStatus.ReplicaState != "active" {
-				logger.Debugf("%s:%s_%s replica in state %s", coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, coreStatus.ReplicaState)
-				problems = append(problems, &ClusterProblem{coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, coreStatus.ReplicaState})
-			}
-			if coreStatus.IndexSize < 0 {
-				logger.Debugf("%s:%s_%s negative index size", coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard)
-				problems = append(problems, &ClusterProblem{coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, ProblemNegativeIndexSize})
-			}
-			if coreStatus.NumDocs < 0 {
-				logger.Debugf("%s:%s_%s negative doc count", coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard)
-				problems = append(problems, &ClusterProblem{coreStatus.NodeName, coreStatus.Collection, coreStatus.Shard, ProblemNegativeNumDocs})
-			}
-		}
-	}
-	return problems
-}
-
 type SplitShardRequestWithSize struct {
 	solrmanapi.SplitShardRequest
 	NumDocs int64
@@ -283,7 +236,7 @@ func MinInt64(a, b int64) int64 {
 	return b
 }
 
-func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) map[string]bool {
+func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState solrmanapi.SolrCloudStatus) map[string]bool {
 	orgToMin := make(map[string]int64)
 	orgToMax := make(map[string]int64)
 
@@ -291,7 +244,7 @@ func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrm
 		return strings.Split(coreName, "_")[0]
 	}
 
-	for _, v := range clusterState.SolrNodes {
+	for _, v := range clusterState {
 		for coreName, status := range v.Cores {
 			org := getOrg(coreName)
 
@@ -320,15 +273,15 @@ func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState *solrm
 	return badlyBalancedOrgs
 }
 
-func computeShardSplits(s *SolrManService, clusterState *solrmanapi.SolrmanStatusResponse) []*solrmanapi.SplitShardRequest {
+func computeShardSplits(s *SolrManService, clusterState solrmanapi.SolrCloudStatus) []*solrmanapi.SplitShardRequest {
 	machineToSplitOps := make(map[string][]*SplitShardRequestWithSize)
 	anyShardTooBig := false
-	for machine, v := range clusterState.SolrNodes {
+	for machine, v := range clusterState {
 		for _, status := range v.Cores {
 			// Continue if this collection has too many shards i.e greater tha 8 * #solr machines
 			if collstate, err := s.SolrMonitor.GetCollectionState(status.Collection); err != nil {
 				continue
-			} else if len(collstate.Shards) > 8*len(clusterState.SolrNodes) {
+			} else if len(collstate.Shards) > 8*len(clusterState) {
 				continue
 			}
 
@@ -371,7 +324,7 @@ func computeShardSplits(s *SolrManService, clusterState *solrmanapi.SolrmanStatu
 	return splitOps
 }
 
-func computeShardMoves(clusterState *solrmanapi.SolrmanStatusResponse, count int) ([]*solrmanapi.MoveShardRequest, error) {
+func computeShardMoves(clusterState solrmanapi.SolrCloudStatus, count int) ([]*solrmanapi.MoveShardRequest, error) {
 	baseModel, err := createModel(clusterState)
 	if err != nil {
 		return nil, err
@@ -412,13 +365,13 @@ func computeShardMoves(clusterState *solrmanapi.SolrmanStatusResponse, count int
 	return shardMoves, nil
 }
 
-func createModel(clusterState *solrmanapi.SolrmanStatusResponse) (*smmodel.Model, error) {
+func createModel(clusterState solrmanapi.SolrCloudStatus) (*smmodel.Model, error) {
 	var currentNode *smmodel.Node
 	m := &smmodel.Model{}
 	seenNodeNames := map[string]bool{}
 	collectionMap := make(map[string]*smmodel.Collection)
 
-	for _, nodeStatus := range clusterState.SolrNodes {
+	for _, nodeStatus := range clusterState {
 		currentNode = &smmodel.Node{Name: nodeStatus.Hostname, Address: nodeStatus.NodeName}
 		if seenNodeNames[nodeStatus.NodeName] {
 			return nil, errorf("already seen: %v", nodeStatus.NodeName)

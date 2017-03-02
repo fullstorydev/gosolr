@@ -75,39 +75,8 @@ func (s *SolrManService) ClusterState() (*solrmanapi.SolrmanStatusResponse, erro
 		return nil, cherrf(err, "failed to get live_nodes")
 	}
 
-	var wg sync.WaitGroup
-	ch := make(chan *solrmanapi.SolrNodeStatus, len(solrNodes))
-
-	for _, solrNode := range solrNodes {
-		wg.Add(1)
-		go func(solrNode string) {
-			defer wg.Done()
-
-			// note: we are passing 'cluster' to multiple concurrent goroutines; they must not write to it!
-			status, err := s.getNodeStatus(solrNode, cluster)
-			if err != nil {
-				s.Logger.Errorf("failed to get status for solr node %q", solrNode)
-			} else {
-				ch <- status
-			}
-		}(solrNode)
-	}
-
-	wg.Wait()
-	close(ch)
-
 	var rsp solrmanapi.SolrmanStatusResponse
-	var payload = make(solrmanapi.SolrCloudStatus)
-	rsp.SolrNodes = payload
-
-	for status := range ch {
-		if _, ok := rsp.SolrNodes[status.Hostname]; ok {
-			// not normal!!
-			s.Logger.Warningf("multiple SolrNodeStatus results received for %s", status.Hostname)
-		}
-
-		rsp.SolrNodes[status.Hostname] = status
-	}
+	rsp.SolrNodes = s.getLiveNodesStatuses(solrNodes, cluster)
 
 	func() {
 		conn := s.RedisPool.Get()
@@ -139,6 +108,39 @@ func (s *SolrManService) ClusterState() (*solrmanapi.SolrmanStatusResponse, erro
 	return &rsp, nil
 }
 
+func (s *SolrManService) getLiveNodesStatuses(liveNodes []string, cluster solrmonitor.ClusterState) solrmanapi.SolrCloudStatus {
+	var wg sync.WaitGroup
+	ch := make(chan *solrmanapi.SolrNodeStatus, len(liveNodes))
+
+	for _, solrNode := range liveNodes {
+		wg.Add(1)
+		go func(solrNode string) {
+			defer wg.Done()
+
+			// note: we are passing 'cluster' to multiple concurrent goroutines; they must not write to it!
+			status, err := s.getNodeStatus(solrNode, cluster)
+			if err != nil {
+				s.Logger.Errorf("failed to get status for solr node %q", solrNode)
+			} else {
+				ch <- status
+			}
+		}(solrNode)
+	}
+
+	wg.Wait()
+	close(ch)
+
+	nodesStatus := make(solrmanapi.SolrCloudStatus)
+	for status := range ch {
+		if _, ok := nodesStatus[status.Hostname]; ok {
+			// not normal!!
+			s.Logger.Warningf("multiple SolrNodeStatus results received for %s", status.Hostname)
+		}
+		nodesStatus[status.Hostname] = status
+	}
+	return nodesStatus
+}
+
 func (s *SolrManService) getNodeStatus(solrNode string, cluster solrmonitor.ClusterState) (*solrmanapi.SolrNodeStatus, error) {
 	params := url.Values{}
 	params.Add("action", "STATUS")
@@ -168,12 +170,14 @@ func (s *SolrManService) getNodeStatus(solrNode string, cluster solrmonitor.Clus
 						Replica:      replicaName,
 						ReplicaState: replica.State,
 						IsLeader:     replica.IsLeader(),
+						HasStats:     false,
 						NumDocs:      -1,
 						IndexSize:    -1,
 					}
 
 					if core, ok := coreStatusRsp.Status[replica.Core]; ok {
 						c := rsp.Cores[replica.Core]
+						c.HasStats = true
 						c.NumDocs = core.Index.NumDocs
 						c.IndexSize = core.Index.SizeInBytes
 					}

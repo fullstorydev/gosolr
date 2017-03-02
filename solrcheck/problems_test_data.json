@@ -1,0 +1,527 @@
+{
+  "live_nodes": [
+    "nodeA",
+    "nodeB",
+    "nodeC",
+    "nodeD"
+  ],
+  "cluster_state": {
+    "coll-1": {
+      "shard-inactive": {
+        "state": "inactive",
+        "hash_range": "80000000-ffffffff",
+        "replicas": {
+          "replica-1_nodeA": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-1:shard-inactive:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeA",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          },
+          "replica-2_nodeB": {
+            "leader": false,
+            "state": "active",
+            "core": "coll-1:shard-inactive:replica-2",
+            "base_url": "http://foo/bar/replica-2",
+            "node_name": "nodeB",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-1:shard-inactive:replica-1",
+          "core_node_name": "replica-1_nodeA",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeA"
+        }
+      },
+      "shard-down": {
+        "state": "down",
+        "hash_range": "00000000-7fffffff",
+        "replicas": {
+          "replica-1_nodeC": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-1:shard-down:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeC",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-1:shard-down:replica-1",
+          "core_node_name": "replica-1_nodeC",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeC"
+        }
+      }
+    },
+    "coll-2": {
+      "shard-no-hash-range": {
+        "state": "active",
+        "hash_range": "",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-2:shard-no-hash-range:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-2:shard-no-hash-range:replica-1",
+          "core_node_name": "replica-1_nodeD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeD"
+        }
+      },
+      "shard-bad-hash-range": {
+        "state": "active",
+        "hash_range": "foo-bar",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-2:shard-bad-hash-range:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-2:shard-bad-hash-range:replica-1",
+          "core_node_name": "replica-1_nodeD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeD"
+        }
+      },
+      "shard-okay": {
+        "state": "active",
+        "hash_range": "80000000-7fffffff",
+        "replicas": {
+          "replica-1_nodeA": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-2:shard-okay:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeA",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-2:shard-okay:replica-1",
+          "core_node_name": "replica-1_nodeA",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeA"
+        }
+      }
+    },
+    "coll-3": {
+      "shard-node-down": {
+        "state": "active",
+        "hash_range": "80000000-7fffffff",
+        "replicas": {
+          "replica-1_nodeE": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-3:shard-node-down:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeE"
+          }
+        },
+        "zk_leader": {
+          "core": "coll-3:shard-node-down:replica-1",
+          "core_node_name": "replica-1_nodeE",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeE"
+        }
+      }
+    },
+    "coll-4": {
+      "shard-no-leader": {
+        "state": "active",
+        "hash_range": "80000000-9fffffff",
+        "replicas": {
+          "replica-1_nodeA": {
+            "leader": false,
+            "state": "active",
+            "core": "coll-4:shard-no-leader:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeA",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-4:shard-no-leader:replica-1",
+          "core_node_name": "replica-BAD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeA"
+        }
+      },
+      "shard-no-replicas": {
+        "state": "active",
+        "hash_range": "a0000000-bfffffff"
+      },
+      "shard-multi-leaders": {
+        "state": "active",
+        "hash_range": "c0000000-dfffffff",
+        "replicas": {
+          "replica-1_nodeB": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-4:shard-multi-leaders:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeB",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          },
+          "replica-2_nodeC": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-4:shard-multi-leaders:replica-2",
+            "base_url": "http://foo/bar/replica-2",
+            "node_name": "nodeC",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-4:shard-multi-leaders:replica-1",
+          "core_node_name": "replica-1_nodeB",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeB"
+        }
+      },
+      "shard-wrong-leader": {
+        "state": "active",
+        "hash_range": "e0000000-ffffffff",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": false,
+            "state": "active",
+            "core": "coll-4:shard-wrong-leader:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          },
+          "replica-2_nodeA": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-4:shard-wrong-leader:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeA",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-4:shard-wrong-leader:replica-1",
+          "core_node_name": "replica-1_nodeD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeD"
+        }
+      },
+      "shard-funny-leader": {
+        "state": "active",
+        "hash_range": "00000000-1fffffff",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": false,
+            "state": "active",
+            "core": "coll-4:shard-funny-leader:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          },
+          "replica-2_nodeA": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-4:shard-funny-leader:replica-2",
+            "base_url": "http://foo/bar/replica-2",
+            "node_name": "nodeA",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-4:shard-funny-leader:replica-2",
+          "core_node_name": "replica-2_nodeA",
+          "base_url": "http://foo/bar/replica-BAD",
+          "node_name": "nodeA"
+        }
+      },
+      "shard-bad-stats": {
+        "state": "active",
+        "hash_range": "20000000-3fffffff",
+        "replicas": {
+          "replica-1_nodeC": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-4:shard-bad-stats:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeC",
+            "stats": {
+              "doc_count": -100,
+              "index_size": -101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-4:shard-bad-stats:replica-1",
+          "core_node_name": "replica-1_nodeC",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeC"
+        }
+      },
+      "shard-zk-error": {
+        "state": "active",
+        "hash_range": "40000000-5fffffff",
+        "replicas": {
+          "replica-1_nodeA": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-4:shard-zk-error:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeA",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-4:shard-zk-error:replica-1",
+          "core_node_name": "replica-1_nodeA",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeA"
+        }
+      },
+      "shard-inactive-replicas": {
+        "state": "active",
+        "hash_range": "60000000-7fffffff",
+        "replicas": {
+          "replica-1_nodeA": {
+            "leader": true,
+            "state": "inactive",
+            "core": "coll-4:shard-inactive-replicas:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeA",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          },
+          "replica-2_nodeC": {
+            "leader": false,
+            "state": "down",
+            "core": "coll-4:shard-inactive-replicas:replica-2",
+            "base_url": "http://foo/bar/replica-2",
+            "node_name": "nodeC",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-4:shard-inactive-replicas:replica-1",
+          "core_node_name": "replica-1_nodeA",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeA"
+        }
+      }
+    },
+    "coll-5": {
+      "shard-no-election": {
+        "state": "active",
+        "hash_range": "80000000-ffffffff",
+        "replicas": {
+          "replica-1_nodeA": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-5:shard-no-election:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeA",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        }
+      },
+      "shard-no-core-stats": {
+        "state": "active",
+        "hash_range": "00000000-7fffffff",
+        "replicas": {
+          "replica-1_nodeC": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-5:shard-no-core-stats:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeC"
+          }
+        },
+        "zk_leader": {
+          "core": "coll-5:shard-no-core-stats:replica-1",
+          "core_node_name": "replica-1_nodeC",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeC"
+        }
+      }
+    },
+    "coll-6": {
+      "shard-1": {
+        "state": "active",
+        "hash_range": "90000000-ffffffff",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-6:shard-1:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-6:shard-1:replica-1",
+          "core_node_name": "replica-1_nodeD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeD"
+        }
+      },
+      "shard-2": {
+        "state": "active",
+        "hash_range": "f8000000-1fffffff",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-6:shard-2:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-6:shard-2:replica-1",
+          "core_node_name": "replica-1_nodeD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeD"
+        }
+      },
+      "shard-3": {
+        "state": "active",
+        "hash_range": "20000000-5fffffff",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-6:shard-3:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-6:shard-3:replica-1",
+          "core_node_name": "replica-1_nodeD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeD"
+        }
+      },
+      "shard-4": {
+        "state": "active",
+        "hash_range": "50000000-67ffffff",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-6:shard-4:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-6:shard-4:replica-1",
+          "core_node_name": "replica-1_nodeD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeD"
+        }
+      },
+      "shard-5": {
+        "state": "active",
+        "hash_range": "70000000-77ffffff",
+        "replicas": {
+          "replica-1_nodeD": {
+            "leader": true,
+            "state": "active",
+            "core": "coll-6:shard-5:replica-1",
+            "base_url": "http://foo/bar/replica-1",
+            "node_name": "nodeD",
+            "stats": {
+              "doc_count": 100,
+              "index_size": 101010
+            }
+          }
+        },
+        "zk_leader": {
+          "core": "coll-6:shard-5:replica-1",
+          "core_node_name": "replica-1_nodeD",
+          "base_url": "http://foo/bar/replica-1",
+          "node_name": "nodeD"
+        }
+      }
+    }
+  }
+}
