@@ -37,6 +37,7 @@ type SolrManService struct {
 	ZooClient   *zk.Conn
 	RedisPool   *redis.Pool
 	Logger      Logger
+	Audit       Audit
 	solrClient  *SolrClient
 
 	mu            sync.Mutex
@@ -74,39 +75,8 @@ func (s *SolrManService) ClusterState() (*solrmanapi.SolrmanStatusResponse, erro
 		return nil, cherrf(err, "failed to get live_nodes")
 	}
 
-	var wg sync.WaitGroup
-	ch := make(chan *solrmanapi.SolrNodeStatus, len(solrNodes))
-
-	for _, solrNode := range solrNodes {
-		wg.Add(1)
-		go func(solrNode string) {
-			defer wg.Done()
-
-			// note: we are passing 'cluster' to multiple concurrent goroutines; they must not write to it!
-			status, err := s.getNodeStatus(solrNode, cluster)
-			if err != nil {
-				s.Logger.Errorf("failed to get status for solr node %q", solrNode)
-			} else {
-				ch <- status
-			}
-		}(solrNode)
-	}
-
-	wg.Wait()
-	close(ch)
-
 	var rsp solrmanapi.SolrmanStatusResponse
-	var payload = make(solrmanapi.SolrCloudStatus)
-	rsp.SolrNodes = payload
-
-	for status := range ch {
-		if _, ok := rsp.SolrNodes[status.Hostname]; ok {
-			// not normal!!
-			s.Logger.Warningf("multiple SolrNodeStatus results received for %s", status.Hostname)
-		}
-
-		rsp.SolrNodes[status.Hostname] = status
-	}
+	rsp.SolrNodes = s.getLiveNodesStatuses(solrNodes, cluster)
 
 	func() {
 		conn := s.RedisPool.Get()
@@ -138,6 +108,39 @@ func (s *SolrManService) ClusterState() (*solrmanapi.SolrmanStatusResponse, erro
 	return &rsp, nil
 }
 
+func (s *SolrManService) getLiveNodesStatuses(liveNodes []string, cluster solrmonitor.ClusterState) solrmanapi.SolrCloudStatus {
+	var wg sync.WaitGroup
+	ch := make(chan *solrmanapi.SolrNodeStatus, len(liveNodes))
+
+	for _, solrNode := range liveNodes {
+		wg.Add(1)
+		go func(solrNode string) {
+			defer wg.Done()
+
+			// note: we are passing 'cluster' to multiple concurrent goroutines; they must not write to it!
+			status, err := s.getNodeStatus(solrNode, cluster)
+			if err != nil {
+				s.Logger.Errorf("failed to get status for solr node %q", solrNode)
+			} else {
+				ch <- status
+			}
+		}(solrNode)
+	}
+
+	wg.Wait()
+	close(ch)
+
+	nodesStatus := make(solrmanapi.SolrCloudStatus)
+	for status := range ch {
+		if _, ok := nodesStatus[status.Hostname]; ok {
+			// not normal!!
+			s.Logger.Warningf("multiple SolrNodeStatus results received for %s", status.Hostname)
+		}
+		nodesStatus[status.Hostname] = status
+	}
+	return nodesStatus
+}
+
 func (s *SolrManService) getNodeStatus(solrNode string, cluster solrmonitor.ClusterState) (*solrmanapi.SolrNodeStatus, error) {
 	params := url.Values{}
 	params.Add("action", "STATUS")
@@ -167,12 +170,14 @@ func (s *SolrManService) getNodeStatus(solrNode string, cluster solrmonitor.Clus
 						Replica:      replicaName,
 						ReplicaState: replica.State,
 						IsLeader:     replica.IsLeader(),
+						HasStats:     false,
 						NumDocs:      -1,
 						IndexSize:    -1,
 					}
 
 					if core, ok := coreStatusRsp.Status[replica.Core]; ok {
 						c := rsp.Cores[replica.Core]
+						c.HasStats = true
 						c.NumDocs = core.Index.NumDocs
 						c.IndexSize = core.Index.SizeInBytes
 					}
@@ -442,4 +447,23 @@ func jsonString(val interface{}) string {
 		panic(err.Error())
 	}
 	return string(b)
+}
+
+// Disables solrman
+func (s *SolrManService) disable() {
+	conn := s.RedisPool.Get()
+	defer conn.Close()
+	if result, err := conn.Do("GET", DisableRedisKey); err != nil {
+		s.Logger.Errorf("failed to query redis for disabled state: %s", err)
+		return
+	} else if result != nil {
+		return // already disabled, nothing to do
+	}
+
+	if _, err := conn.Do("SET", DisableRedisKey, "1"); err != nil {
+		s.Logger.Errorf("failed to set disabled state is redis: %s", err)
+		return
+	}
+
+	s.Logger.Alertf("automatically disabling after encountering operation error; see logs for details")
 }

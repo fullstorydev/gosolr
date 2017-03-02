@@ -32,6 +32,7 @@ type SolrCoreStatus struct {
 	Replica      string // replica name (e.g. "core_node_2")
 	ReplicaState string // e.g. "active", "inactive", "recovering", "down"
 	IsLeader     bool   // whether this replica is the leader of its shard
+	HasStats     bool   // if false, core status could not be queried and following attributes are expected to be -1
 	NumDocs      int64  // total number of indexed documents
 	IndexSize    int64  // in bytes
 }

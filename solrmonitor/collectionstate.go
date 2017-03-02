@@ -20,22 +20,10 @@ type CollectionState struct {
 	Router            Router                `json:"router"`            // e.g. {"name":"compositeId"}
 	MaxShardsPerNode  string                `json:"maxShardsPerNode"`  // e.g. "1" (yes, these are strings, not numbers)
 	AutoAddReplicas   string                `json:"autoAddReplicas"`   // e.g. "false" (yes, these are strings, not bools)
+
+	ZkNodeVersion int32 `json:"-"` // the ZK node version this state snapshot represents.
 }
 
 type Router struct {
 	Name string `json:"name"` // e.g. "compositeId"
-}
-
-// LookupCore finds and returns the replica with the given core name, if one exists.
-func (c CollectionState) LookupCore(coreName string) (shard, replica string) {
-	for shardName, shard := range c.Shards {
-		for replicaName, replica := range shard.Replicas {
-			if replica.Core == coreName {
-				// found it!
-				return shardName, replicaName
-			}
-		}
-	}
-
-	return "", ""
 }
