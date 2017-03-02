@@ -73,6 +73,32 @@ func (s *SolrManService) doRunSplitOperation(split *solrmanapi.OpRecord) error {
 		return cherrf(err, "no such shard %s in collection %s", split.Shard, split.Collection)
 	}
 
+	s.Audit.BeforeOp(*split, *coll)
+	lastZkVersion := coll.ZkNodeVersion
+	success := false
+	defer func() {
+		var newCollState *solrmonitor.CollectionState
+		for retry := 0; retry < 3; retry++ {
+			var err error
+			if newCollState, err = s.SolrMonitor.GetCollectionState(split.Collection); err != nil {
+				s.Logger.Errorf("failed to retrieve collection state after op %s: %s", split, err)
+				return
+			} else {
+				if newCollState.ZkNodeVersion > lastZkVersion {
+					break
+				}
+			}
+			// Haven't seen an update yet, wait a little and try again.
+			time.Sleep(5 * time.Second)
+		}
+		if success {
+			s.Audit.SuccessOp(*split, *newCollState)
+		} else {
+			s.Audit.FailedOp(*split, *newCollState)
+			s.disable()
+		}
+	}()
+
 	// this must be the initial request, so the first step is to start a SPLITSHARD command
 	requestId := newSolrRequestId()
 	if err := s.solrClient.SplitShard(split.Collection, split.Shard, requestId); err != nil {
@@ -103,6 +129,8 @@ func (s *SolrManService) doRunSplitOperation(split *solrmanapi.OpRecord) error {
 		child1 := split.Shard + "_1"
 		if activeShardExists(coll, child0) && activeShardExists(coll, child1) && inactiveShardExists(coll, split.Shard) {
 			s.Logger.Debugf("shards %s and %s exist and are active, and shard %s is inactive - assuming SPLITSHARD has completed", child0, child1, split.Shard)
+			s.Audit.SuccessOp(*split, *coll) // should log state where parent shard still exists
+			lastZkVersion = coll.ZkNodeVersion
 			break
 		}
 
@@ -117,12 +145,14 @@ func (s *SolrManService) doRunSplitOperation(split *solrmanapi.OpRecord) error {
 		// just treat this as a success.
 		if solrErr := isNoSuchShardError(err, split.Collection, split.Shard); solrErr != nil {
 			s.Logger.Debugf("assuming shard was previously deleted: %s", solrErr)
+			success = true
 			return nil
 		} else {
 			return cherrf(err, "failed to issue DELETESHARD command")
 		}
 	}
 	s.Logger.Infof("deleted shard %q of collection %q", split.Shard, split.Collection)
+	success = true
 	return nil
 }
 
