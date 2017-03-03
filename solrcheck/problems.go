@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/fullstorydev/gosolr/solrmonitor"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/samuel/go-zookeeper/zk"
-	"strings"
 )
 
 // ClusterProblem represents an issue identified with the current solr cluster status.
@@ -214,9 +214,39 @@ func (p byLoTerm) Less(i, j int) bool {
 
 func (p byLoTerm) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
+// FindCloudStatusProblems examines the given cloud status and set of live nodes in order to identify node/core problems.
+func FindCloudStatusProblems(solrStatus solrmanapi.SolrCloudStatus, liveNodes []string) []*ClusterProblem {
+	gotNodeStatus := map[string]bool{}
+	var problems []*ClusterProblem
+	for _, nodeStatus := range solrStatus {
+		gotNodeStatus[nodeStatus.NodeName] = true
+		for _, coreStatus := range nodeStatus.Cores {
+			collName, shard, nodeName := coreStatus.Collection, coreStatus.Shard, coreStatus.NodeName
+			if !coreStatus.HasStats {
+				problems = append(problems, replicaProblem(ProblemCoreStatusFail, collName, shard, nodeName, ""))
+			} else {
+				if coreStatus.IndexSize < 0 {
+					problems = append(problems, replicaProblem(ProblemNegativeIndexSize, collName, shard, nodeName, fmt.Sprintf("%d", coreStatus.IndexSize)))
+				}
+				if coreStatus.NumDocs < 0 {
+					problems = append(problems, replicaProblem(ProblemNegativeNumDocs, collName, shard, nodeName, fmt.Sprintf("%d", coreStatus.NumDocs)))
+				}
+			}
+
+		}
+	}
+
+	for _, ln := range liveNodes {
+		if !gotNodeStatus[ln] {
+			problems = append(problems, nodeProblem(ProblemCoreStatusFail, ln, ""))
+		}
+	}
+	return problems
+}
+
 // FindClusterProblems examines the given cluster state and set of live nodes in order to identify any
 // anomalies in solr cluster configuration.
-func FindClusterProblems(zkConn zkGetter, clusterState solrmonitor.ClusterState, solrStatus solrmanapi.SolrCloudStatus, liveNodes []string) []*ClusterProblem {
+func FindClusterProblems(zkConn zkGetter, clusterState solrmonitor.ClusterState, liveNodes []string) []*ClusterProblem {
 	liveNodeSet := map[string]bool{}
 	for _, liveNode := range liveNodes {
 		liveNodeSet[liveNode] = true
@@ -265,19 +295,6 @@ func FindClusterProblems(zkConn zkGetter, clusterState solrmonitor.ClusterState,
 					if !missingLiveNodes[nodeName] {
 						missingLiveNodes[nodeName] = true
 						problems = append(problems, nodeProblem(ProblemNodeDown, nodeName, ""))
-					}
-				} else {
-					// was in list of live nodes, so we'll have a core status
-					coreStatus := solrStatus[nodeName].Cores[replica.Core]
-					if !coreStatus.HasStats {
-						problems = append(problems, replicaProblem(ProblemCoreStatusFail, collName, shard, nodeName, ""))
-					} else {
-						if coreStatus.IndexSize < 0 {
-							problems = append(problems, replicaProblem(ProblemNegativeIndexSize, collName, shard, nodeName, fmt.Sprintf("%d", coreStatus.IndexSize)))
-						}
-						if coreStatus.NumDocs < 0 {
-							problems = append(problems, replicaProblem(ProblemNegativeNumDocs, collName, shard, nodeName, fmt.Sprintf("%d", coreStatus.NumDocs)))
-						}
 					}
 				}
 

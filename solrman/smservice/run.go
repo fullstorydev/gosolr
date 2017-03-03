@@ -89,7 +89,8 @@ func (s *SolrManService) RunSolrMan() {
 		}
 		solrStatus := s.getLiveNodesStatuses(liveNodes, clusterState)
 
-		problems := solrcheck.FindClusterProblems(s.ZooClient, clusterState, solrStatus, liveNodes)
+		problems := solrcheck.FindClusterProblems(s.ZooClient, clusterState, liveNodes)
+		problems = append(problems, solrcheck.FindCloudStatusProblems(solrStatus, liveNodes)...)
 		if len(problems) > 0 {
 			for _, p := range problems {
 				s.Logger.Infof("PROBLEM: %v", p)

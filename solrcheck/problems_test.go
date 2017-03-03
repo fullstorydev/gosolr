@@ -52,7 +52,11 @@ func TestFindClusterProblems(t *testing.T) {
 				shardState.Replicas[replicaName] = replicaState
 				nodeStatus, ok := solrStatus[replica.NodeName]
 				if !ok {
-					nodeStatus = &solrmanapi.SolrNodeStatus{ Cores: map[string]*solrmanapi.SolrCoreStatus{} }
+					nodeStatus = &solrmanapi.SolrNodeStatus{
+						NodeName: replica.NodeName,
+						Hostname: replica.NodeName,
+						Cores: map[string]*solrmanapi.SolrCoreStatus{},
+					}
 					solrStatus[replica.NodeName] = nodeStatus
 				}
 				coreStatus := &solrmanapi.SolrCoreStatus{
@@ -88,7 +92,8 @@ func TestFindClusterProblems(t *testing.T) {
 	}
 
 	// compute all problems
-	problems := FindClusterProblems(zkState, clusterState, solrStatus, data.LiveNodes)
+	problems := FindClusterProblems(zkState, clusterState, data.LiveNodes)
+	problems = append(problems, FindCloudStatusProblems(solrStatus, data.LiveNodes)...)
 
 	// verify they match expectations
 	expected := []*ClusterProblem{
@@ -97,6 +102,7 @@ func TestFindClusterProblems(t *testing.T) {
 		shardProblem(ProblemInactiveShard, "coll-1", "shard-inactive", "inactive"),
 		shardProblem(ProblemBadHashRange, "coll-2", "shard-bad-hash-range", "foo-bar"),
 		shardProblem(ProblemBadHashRange, "coll-2", "shard-no-hash-range", ""),
+		replicaProblem(ProblemCoreStatusFail, "coll-3", "shard-node-down", "nodeE", ""),
 		replicaProblem(ProblemNegativeNumDocs, "coll-4", "shard-bad-stats", "nodeC", "-100"),
 		replicaProblem(ProblemNegativeIndexSize, "coll-4", "shard-bad-stats", "nodeC", "-101010"),
 		shardLeaderProblem(ProblemMismatchLeader, "coll-4", "shard-funny-leader",
