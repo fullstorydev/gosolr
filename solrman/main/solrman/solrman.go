@@ -114,6 +114,7 @@ func run(logger *log.Logger) error {
 		ZooClient:   zooClient,
 		RedisPool:   redisPool,
 		Logger:      smLogger,
+		AlertLog:    smLogger,
 		Audit:       smAudit,
 	}
 
@@ -308,10 +309,6 @@ func (l *solrmanLogger) Warningf(format string, args ...interface{}) {
 
 func (l *solrmanLogger) Errorf(format string, args ...interface{}) {
 	l.logger.Printf("ERROR: "+format, args...)
-}
-
-func (l *solrmanLogger) Alertf(format string, args ...interface{}) {
-	l.logger.Printf("ALERT: "+format, args...)
 }
 
 type solrmanAudit struct {

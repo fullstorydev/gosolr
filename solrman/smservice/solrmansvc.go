@@ -36,7 +36,8 @@ type SolrManService struct {
 	SolrMonitor *solrmonitor.SolrMonitor
 	ZooClient   *zk.Conn
 	RedisPool   *redis.Pool
-	Logger      Logger
+	Logger      Logger // for "normal" logging
+	AlertLog    Logger // for "alert" logging that should notify engineers
 	Audit       Audit
 	solrClient  *SolrClient
 
@@ -467,5 +468,5 @@ func (s *SolrManService) disable() {
 		return
 	}
 
-	s.Logger.Alertf("automatically disabling after encountering operation error; see logs for details")
+	s.AlertLog.Errorf("automatically disabling after encountering operation error; see logs for details")
 }

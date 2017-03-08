@@ -108,7 +108,7 @@ func (s *SolrManService) RunSolrMan() {
 				s.Logger.Infof("PROBLEM: %v", p)
 			}
 			if clusterStateGolden {
-				s.Logger.Alertf("cluster state became not golden; see logs for details")
+				s.AlertLog.Errorf("cluster state became not golden; see logs for details")
 				clusterStateGolden = false
 			}
 			s.Logger.Warningf("cluster state is not golden, skipping; see logs for details")
@@ -116,7 +116,7 @@ func (s *SolrManService) RunSolrMan() {
 		}
 
 		if !clusterStateGolden {
-			s.Logger.Alertf("cluster state became golden; resuming operation")
+			s.AlertLog.Infof("cluster state became golden; resuming operation")
 			clusterStateGolden = true
 		}
 
