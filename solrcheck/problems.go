@@ -8,14 +8,14 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fullstorydev/gosolr/solrmonitor"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
+	"github.com/fullstorydev/gosolr/solrmonitor"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
 // ClusterProblem represents an issue identified with the current solr cluster status.
 type ClusterProblem struct {
-	Kind       ProblemKind
+	Kind ProblemKind
 
 	// At least one (but possibly two or even all three) of the following defines where
 	// the problem exists.
@@ -66,35 +66,35 @@ const (
 	ProblemNoReplicas
 	ProblemLeaderCount // actual indicates number of observed leader replicas (expected to be 1)
 	ProblemNoZkElection
-	ProblemWrongLeader // leader name will be set; expected is the ZK leader, actual is name of wrong replica marked as leader or empty to indicate replica that should be leader is not so marked
-	ProblemMismatchLeader // leader name will be set; expected is attributes of leader in ZK, actual is attributes of leader in replica state
-	ProblemBadHashRange // details will be shard's configured hash range
-	ProblemInactiveReplica // details will be replica state
-	ProblemMissingHashRange // details will be comma-separated list of omitted hash ranges
+	ProblemWrongLeader        // leader name will be set; expected is the ZK leader, actual is name of wrong replica marked as leader or empty to indicate replica that should be leader is not so marked
+	ProblemMismatchLeader     // leader name will be set; expected is attributes of leader in ZK, actual is attributes of leader in replica state
+	ProblemBadHashRange       // details will be shard's configured hash range
+	ProblemInactiveReplica    // details will be replica state
+	ProblemMissingHashRange   // details will be comma-separated list of omitted hash ranges
 	ProblemAmbiguousHashRange // details will be comma-separated list of overlapping hash ranges
 	ProblemNodeDown
 	ProblemCoreStatusFail
-	ProblemNegativeNumDocs // details will be core's document count
+	ProblemNegativeNumDocs   // details will be core's document count
 	ProblemNegativeIndexSize // details will be core's index size
-	ProblemError // error will be set with more info
+	ProblemError             // error will be set with more info
 )
 
 var problemNames = map[ProblemKind]string{
-	ProblemInactiveShard: "shard not active",
-	ProblemNoReplicas: "shard has no replicas",
-	ProblemLeaderCount: "shard leader count != 1",
-	ProblemNoZkElection: "shard has no ZK leader election",
-	ProblemWrongLeader: "shard leader replica does not match ZK leader election",
-	ProblemMismatchLeader: "shard leader replica has attributes inconsistent with ZK leader election",
-	ProblemBadHashRange: "shard has a bad hash range defined",
-	ProblemInactiveReplica: "replica not active",
-	ProblemMissingHashRange: "collection is missing a hash range",
+	ProblemInactiveShard:      "shard not active",
+	ProblemNoReplicas:         "shard has no replicas",
+	ProblemLeaderCount:        "shard leader count != 1",
+	ProblemNoZkElection:       "shard has no ZK leader election",
+	ProblemWrongLeader:        "shard leader replica does not match ZK leader election",
+	ProblemMismatchLeader:     "shard leader replica has attributes inconsistent with ZK leader election",
+	ProblemBadHashRange:       "shard has a bad hash range defined",
+	ProblemInactiveReplica:    "replica not active",
+	ProblemMissingHashRange:   "collection is missing a hash range",
 	ProblemAmbiguousHashRange: "collection has overlapping hash ranges",
-	ProblemNodeDown: "node down",
-	ProblemCoreStatusFail: "failed to query status of core",
-	ProblemNegativeNumDocs: "negative document count",
-	ProblemNegativeIndexSize: "negative index size",
-	ProblemError: "error",
+	ProblemNodeDown:           "node down",
+	ProblemCoreStatusFail:     "failed to query status of core",
+	ProblemNegativeNumDocs:    "negative document count",
+	ProblemNegativeIndexSize:  "negative index size",
+	ProblemError:              "error",
 }
 
 func (k ProblemKind) String() string {
@@ -103,25 +103,25 @@ func (k ProblemKind) String() string {
 
 func nodeProblem(kind ProblemKind, node, details string) *ClusterProblem {
 	return &ClusterProblem{
-		Kind: kind,
-		Node: node,
+		Kind:         kind,
+		Node:         node,
 		OtherDetails: details,
 	}
 }
 
 func collProblem(kind ProblemKind, coll, details string) *ClusterProblem {
 	return &ClusterProblem{
-		Kind: kind,
-		Collection: coll,
+		Kind:         kind,
+		Collection:   coll,
 		OtherDetails: details,
 	}
 }
 
 func shardProblem(kind ProblemKind, coll, shard, details string) *ClusterProblem {
 	return &ClusterProblem{
-		Kind: kind,
-		Collection: coll,
-		Shard: shard,
+		Kind:         kind,
+		Collection:   coll,
+		Shard:        shard,
 		OtherDetails: details,
 	}
 }
@@ -137,31 +137,31 @@ func shardLeaderProblem(kind ProblemKind, coll, shard, expected, actual, leaderN
 		details = fmt.Sprintf("%s: %s", details, extraDetails)
 	}
 	return &ClusterProblem{
-		Kind: kind,
-		Collection: coll,
-		Shard: shard,
-		Expected: expected,
-		Actual: actual,
-		LeaderName: leaderName,
+		Kind:         kind,
+		Collection:   coll,
+		Shard:        shard,
+		Expected:     expected,
+		Actual:       actual,
+		LeaderName:   leaderName,
 		OtherDetails: details,
 	}
 }
 
 func shardError(coll, shard string, err error) *ClusterProblem {
 	return &ClusterProblem{
-		Kind: ProblemError,
+		Kind:       ProblemError,
 		Collection: coll,
-		Shard: shard,
-		Error: err,
+		Shard:      shard,
+		Error:      err,
 	}
 }
 
 func replicaProblem(kind ProblemKind, coll, shard, node, details string) *ClusterProblem {
 	return &ClusterProblem{
-		Kind: kind,
-		Collection: coll,
-		Shard: shard,
-		Node: node,
+		Kind:         kind,
+		Collection:   coll,
+		Shard:        shard,
+		Node:         node,
 		OtherDetails: details,
 	}
 }
@@ -343,19 +343,19 @@ func FindClusterProblems(zkConn zkGetter, clusterState solrmonitor.ClusterState,
 			for i, hr := range hashRanges {
 				if i == 0 {
 					if hr.lo > lastEnd {
-						missing[hashRange{lastEnd, hr.lo-1}] = struct{}{}
+						missing[hashRange{lastEnd, hr.lo - 1}] = struct{}{}
 					}
 				} else if hr.lo <= lastEnd {
 					ambiguous[hashRange{hr.lo, lastEnd}] = struct{}{}
 				} else if hr.lo > lastEnd+1 {
-					missing[hashRange{lastEnd+1, hr.lo-1}] = struct{}{}
+					missing[hashRange{lastEnd + 1, hr.lo - 1}] = struct{}{}
 				}
 				if hr.hi > lastEnd {
 					lastEnd = hr.hi
 				}
 			}
 			if lastEnd < math.MaxInt32 {
-				missing[hashRange{lastEnd+1, math.MaxInt32}] = struct{}{}
+				missing[hashRange{lastEnd + 1, math.MaxInt32}] = struct{}{}
 			}
 		}
 

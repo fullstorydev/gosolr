@@ -15,7 +15,6 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-
 func TestFindClusterProblems(t *testing.T) {
 	b, err := ioutil.ReadFile("./problems_test_data.json")
 	if err != nil {
@@ -32,21 +31,21 @@ func TestFindClusterProblems(t *testing.T) {
 	zkState := fakeZk{}
 
 	for collName, coll := range data.ClusterState {
-		collState := &solrmonitor.CollectionState{ Shards: map[string]solrmonitor.ShardState{} }
+		collState := &solrmonitor.CollectionState{Shards: map[string]solrmonitor.ShardState{}}
 		clusterState[collName] = collState
 		for shardName, shard := range coll {
 			shardState := solrmonitor.ShardState{
-				State: shard.State,
-				Range: shard.HashRange,
+				State:    shard.State,
+				Range:    shard.HashRange,
 				Replicas: map[string]solrmonitor.ReplicaState{},
 			}
 			collState.Shards[shardName] = shardState
 			for replicaName, replica := range shard.Replicas {
 				replicaState := solrmonitor.ReplicaState{
-					State: replica.State,
-					Core: replica.Core,
-					BaseUrl: replica.BaseURL,
-					Leader: strconv.FormatBool(replica.Leader),
+					State:    replica.State,
+					Core:     replica.Core,
+					BaseUrl:  replica.BaseURL,
+					Leader:   strconv.FormatBool(replica.Leader),
 					NodeName: replica.NodeName,
 				}
 				shardState.Replicas[replicaName] = replicaState
@@ -55,23 +54,23 @@ func TestFindClusterProblems(t *testing.T) {
 					nodeStatus = &solrmanapi.SolrNodeStatus{
 						NodeName: replica.NodeName,
 						Hostname: replica.NodeName,
-						Cores: map[string]*solrmanapi.SolrCoreStatus{},
+						Cores:    map[string]*solrmanapi.SolrCoreStatus{},
 					}
 					solrStatus[replica.NodeName] = nodeStatus
 				}
 				coreStatus := &solrmanapi.SolrCoreStatus{
-					Name: replica.Core,
-					Collection: collName,
-					Shard: shardName,
-					Replica: replicaName,
-					NodeName: replica.NodeName,
-					Range: shard.HashRange,
-					ShardState: shard.State,
+					Name:         replica.Core,
+					Collection:   collName,
+					Shard:        shardName,
+					Replica:      replicaName,
+					NodeName:     replica.NodeName,
+					Range:        shard.HashRange,
+					ShardState:   shard.State,
 					ReplicaState: replica.State,
-					IsLeader: replica.Leader,
-					HasStats: false,
-					IndexSize: -1,
-					NumDocs: -1,
+					IsLeader:     replica.Leader,
+					HasStats:     false,
+					IndexSize:    -1,
+					NumDocs:      -1,
 				}
 				if replica.Stats != nil {
 					coreStatus.HasStats = true
@@ -82,10 +81,10 @@ func TestFindClusterProblems(t *testing.T) {
 			}
 			if shard.ZkLeader != nil {
 				zkState[fmt.Sprintf("%s:%s", collName, shardName)] = &zkLeaderNode{
-					Core: shard.ZkLeader.Core,
-					BaseUrl: shard.ZkLeader.BaseURL,
+					Core:         shard.ZkLeader.Core,
+					BaseUrl:      shard.ZkLeader.BaseURL,
 					CoreNodeName: shard.ZkLeader.CoreNodeName,
-					NodeName: shard.ZkLeader.NodeName,
+					NodeName:     shard.ZkLeader.NodeName,
 				}
 			}
 		}
@@ -171,12 +170,12 @@ func problemsAsString(problems []*ClusterProblem) string {
 }
 
 type testData struct {
-	LiveNodes    []string `json:"live_nodes"`
+	LiveNodes    []string                       `json:"live_nodes"`
 	ClusterState map[string]map[string]struct { // keyed by collection name, then shard name
-		State     string `json:"state"`
-		HashRange string `json:"hash_range"`
+		State     string              `json:"state"`
+		HashRange string              `json:"hash_range"`
 		Replicas  map[string]struct { // keyed by core node name of replica
-			Leader   bool `json:"leader"`
+			Leader   bool   `json:"leader"`
 			State    string `json:"state"`
 			Core     string `json:"core"`
 			BaseURL  string `json:"base_url"`
@@ -186,7 +185,7 @@ type testData struct {
 				IndexSize int64 `json:"index_size"`
 			} `json:"stats"`
 		} `json:"replicas"`
-		ZkLeader  *struct {
+		ZkLeader *struct {
 			Core         string `json:"core"`
 			CoreNodeName string `json:"core_node_name"`
 			BaseURL      string `json:"base_url"`
@@ -210,7 +209,7 @@ func (z fakeZk) Get(path string) ([]byte, *zk.Stat, error) {
 	}
 	leader := z[fmt.Sprintf("%s:%s", coll, shard)]
 	if leader == nil {
-		return nil, nil ,zk.ErrNoNode
+		return nil, nil, zk.ErrNoNode
 	}
 	if b, err := json.Marshal(leader); err != nil {
 		return nil, nil, err
