@@ -46,9 +46,11 @@ type SolrManService struct {
 }
 
 const (
-	OpMapRedisKey       = "Solrman:in_progress_op_map"
-	CompletedOpRedisKey = "Solrman:completed_op_list"
-	DisableRedisKey     = "Solrman:disabled"
+	OpMapRedisKey         = "Solrman:in_progress_op_map"
+	CompletedOpRedisKey   = "Solrman:completed_op_list"
+	DisableRedisKey       = "Solrman:disabled"
+	DisableSplitsRedisKey = "Solrman:disable_splits"
+	DisableMovesRedisKey  = "Solrman:disable_moves"
 )
 
 type byStartedRecently []solrmanapi.OpRecord
