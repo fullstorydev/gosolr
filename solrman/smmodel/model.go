@@ -17,9 +17,10 @@ package smmodel
 import (
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 )
 
-const debug = false
+const debug = 0 // 0 means no debug output; 3 is maximum debug output
 
 type Model struct {
 	Docs        float64       `json:"docs"`
@@ -133,15 +134,11 @@ type permutation struct {
 	move  *Move
 }
 
-func (m *Model) computeNextMoveShard(immobileCores map[string]bool, shard int, shardCount int, c chan *permutation) {
+func (m *Model) computeNextMoveShard(immobileCores map[string]bool, mustEvacuate bool, shard int, shardCount int, c chan *permutation, active *int32) {
 	// Try moving every core to every other node, find the best score.
 	count := 0
 	for _, core := range m.cores {
 		if immobileCores[core.Name] {
-			continue
-		}
-		if core.Docs < 500000 {
-			// HACK, optimization: don't even consider move cores with less than 500K docs
 			continue
 		}
 		var fromNode *Node
@@ -151,6 +148,14 @@ func (m *Model) computeNextMoveShard(immobileCores map[string]bool, shard int, s
 				break
 			}
 		}
+		if core.Docs < 500000 && !fromNode.Evacuating {
+			// HACK, optimization: don't even consider move cores with less than 500K docs
+			continue
+		}
+		if mustEvacuate && !fromNode.Evacuating {
+			// skip moves off of nodes that aren't trying to evacuate their contents
+			continue
+		}
 		if fromNode == nil {
 			panic("cannot find owner node for: " + core.Name)
 		}
@@ -158,6 +163,11 @@ func (m *Model) computeNextMoveShard(immobileCores map[string]bool, shard int, s
 			if toNode == fromNode {
 				continue
 			}
+			if toNode.Evacuating {
+				// don't bother considering a move that adds a core to a node that is being evacuated
+				continue
+			}
+
 			count += 1
 			if count%shardCount == shard {
 				mPrime := m.WithMove(core, toNode)
@@ -166,45 +176,17 @@ func (m *Model) computeNextMoveShard(immobileCores map[string]bool, shard int, s
 					model: mPrime,
 					move:  &Move{Core: core, FromNode: fromNode, ToNode: toNode},
 				}
-				if debug {
+				if debug >= 1 {
 					fmt.Printf("move cost: %f: %s\n", move.cost, move.move)
 				}
 				c <- move
 			}
 		}
 	}
-	c <- nil // sentinel termination value
-}
-
-func (m *Model) countPerms(immobileCores map[string]bool) int {
-	// Try moving every core to every other node, find the best score.
-	count := 0
-	for _, core := range m.cores {
-		if immobileCores[core.Name] {
-			continue
-		}
-		if core.Docs < 500000 {
-			// HACK, optimization: don't even consider move cores with less than 500K docs
-			continue
-		}
-		var fromNode *Node
-		for _, node := range m.Nodes {
-			if node.Contains(core) {
-				fromNode = node
-				break
-			}
-		}
-		if fromNode == nil {
-			panic("cannot find owner node for: " + core.Name)
-		}
-		for _, toNode := range m.Nodes {
-			if toNode == fromNode {
-				continue
-			}
-			count += 1
-		}
+	if atomic.AddInt32(active, -1) == 0 {
+		// if we were the last active goroutine, close the channel
+		close(c)
 	}
-	return count
 }
 
 func (m *Model) ComputeNextMove(numCPU int, immobileCores map[string]bool) (*Model, *Move) {
@@ -213,40 +195,58 @@ func (m *Model) ComputeNextMove(numCPU int, immobileCores map[string]bool) (*Mod
 		model: m,
 		move:  nil,
 	}
-	if debug {
+	if debug >= 1 {
 		fmt.Printf("base model cost: %f\n", best.cost)
+	}
+
+	// check to see if our next move must be an evacuation
+	mustEvacuate := false
+	for _, n := range m.Nodes {
+		if n.Evacuating && n.coreCount > 0 {
+			mustEvacuate = true
+			break
+		}
+	}
+	if debug >= 1 {
+		fmt.Printf("Move must remove core from evacuating node? %v\n", mustEvacuate)
 	}
 
 	// Try moving every core to every other node, find the best score.
 	c := make(chan *permutation)
+	activeRoutines := int32(numCPU)
 	for i := 0; i < numCPU; i += 1 {
-		go m.computeNextMoveShard(immobileCores, i, numCPU, c)
+		go m.computeNextMoveShard(immobileCores, mustEvacuate, i, numCPU, c, &activeRoutines)
 	}
 
-	count := m.countPerms(immobileCores) + numCPU // count + 1 sentinel per goroutine
-	for ; count > 0; count -= 1 {
+	for {
 		move := <-c
 		if move == nil {
-			continue // sentinel
+			break
 		}
 		if move.cost < best.cost {
 			best = move
 		}
+		if best.move == nil && move.move.FromNode.Evacuating {
+			// we want to make sure that the "no op" option cannot prevail against
+			// an option that moves a core off of a node that is being evacuated
+			best = move
+		}
 	}
 
-	if debug {
+	if debug >= 1 {
 		fmt.Printf("best move cost: %f: %s\n", best.cost, best.move)
 	}
 	return best.model, best.move
 }
 
 type Node struct {
-	Name      string  `json:"name"`
-	Address   string  `json:"address"`
-	Docs      float64 `json:"docs"`
-	Size      float64 `json:"size"` // in bytes
-	coreCount int
-	id        int // unique id of this node for internal tracking
+	Name       string  `json:"name"`
+	Address    string  `json:"address"`
+	Evacuating bool    `json:"evacuating"`
+	Docs       float64 `json:"docs"`
+	Size       float64 `json:"size"` // in bytes
+	coreCount  int
+	id         int // unique id of this node for internal tracking
 
 	cost float64 // cached cost
 }

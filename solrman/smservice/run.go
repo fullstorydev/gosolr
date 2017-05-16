@@ -63,6 +63,7 @@ func (s *SolrManService) RunSolrMan() {
 		}
 
 		var disabled, disableSplits, disableMoves bool
+		var evacuatingNodes []string
 		if err := func() error {
 			conn := s.RedisPool.Get()
 			defer conn.Close()
@@ -73,6 +74,14 @@ func (s *SolrManService) RunSolrMan() {
 
 			if _, err := redis.Scan(reply, &disabled, &disableSplits, &disableMoves); err != nil {
 				return cherrf(err, "could not parse MGET redis reply as boolean values")
+			}
+
+			reply, err = redis.Values(conn.Do("LRANGE", EvacuateNodesRedisKey, 0, -1))
+			if err != nil {
+				return cherrf(err, "failed to LRANGE redis for hosts to evacuate")
+			}
+			if err := redis.ScanSlice(reply, &evacuatingNodes); err != nil {
+				return cherrf(err, "could not parse LRANGE redis reply as slice of strings")
 			}
 			return nil
 		}(); err != nil {
@@ -158,7 +167,7 @@ func (s *SolrManService) RunSolrMan() {
 		} else {
 			// Long-running computation!
 			s.setStatusOp("computing shard moves")
-			shardMoves, err := computeShardMoves(solrStatus, movesPerCycle)
+			shardMoves, err := computeShardMoves(solrStatus, evacuatingNodes, movesPerCycle)
 			if err != nil {
 				s.setStatusOp("failed to compute shard moves")
 				s.Logger.Errorf("failed to compute shard moves: %s", err)
@@ -345,8 +354,8 @@ func computeShardSplits(s *SolrManService, clusterState solrmanapi.SolrCloudStat
 	return splitOps
 }
 
-func computeShardMoves(clusterState solrmanapi.SolrCloudStatus, count int) ([]*solrmanapi.MoveShardRequest, error) {
-	baseModel, err := createModel(clusterState)
+func computeShardMoves(clusterState solrmanapi.SolrCloudStatus, evacuatingNodes []string, count int) ([]*solrmanapi.MoveShardRequest, error) {
+	baseModel, err := createModel(clusterState, evacuatingNodes)
 	if err != nil {
 		return nil, err
 	}
@@ -386,18 +395,26 @@ func computeShardMoves(clusterState solrmanapi.SolrCloudStatus, count int) ([]*s
 	return shardMoves, nil
 }
 
-func createModel(clusterState solrmanapi.SolrCloudStatus) (*smmodel.Model, error) {
+func createModel(clusterState solrmanapi.SolrCloudStatus, evacuatingNodes []string) (*smmodel.Model, error) {
 	var currentNode *smmodel.Node
 	m := &smmodel.Model{}
 	seenNodeNames := map[string]bool{}
 	collectionMap := make(map[string]*smmodel.Collection)
+	evacuatingNodeSet := map[string]bool{}
+	for _, n := range evacuatingNodes {
+		evacuatingNodeSet[n] = true
+	}
 
 	for _, nodeStatus := range clusterState {
-		currentNode = &smmodel.Node{Name: nodeStatus.Hostname, Address: nodeStatus.NodeName}
 		if seenNodeNames[nodeStatus.NodeName] {
 			return nil, errorf("already seen: %v", nodeStatus.NodeName)
 		}
 		seenNodeNames[nodeStatus.NodeName] = true
+		currentNode = &smmodel.Node{
+			Name:       nodeStatus.Hostname,
+			Address:    nodeStatus.NodeName,
+			Evacuating: evacuatingNodeSet[nodeStatus.Hostname],
+		}
 		m.AddNode(currentNode)
 
 		for _, coreStatus := range nodeStatus.Cores {

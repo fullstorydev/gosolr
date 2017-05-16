@@ -49,6 +49,7 @@ type SolrManService struct {
 const (
 	OpMapRedisKey         = "Solrman:in_progress_op_map"
 	CompletedOpRedisKey   = "Solrman:completed_op_list"
+	EvacuateNodesRedisKey = "Solrman:evacuate_node_list"
 	DisableRedisKey       = "Solrman:disabled"
 	DisableSplitsRedisKey = "Solrman:disable_splits"
 	DisableMovesRedisKey  = "Solrman:disable_moves"

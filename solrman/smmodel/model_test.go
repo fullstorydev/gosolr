@@ -143,6 +143,36 @@ func TestLargeModel(t *testing.T) {
 	}, moves)
 }
 
+func TestLargeModel_EvacuatingNodes(t *testing.T) {
+	t.Parallel()
+	data, err := ioutil.ReadFile("evac_model.txt")
+	if err != nil {
+		t.Fatalf("failed to read evac model: %s", err)
+	}
+	baseModel := createTestModel(string(data), "solr-8.node", "solr-9.node")
+
+	immobileCores := map[string]bool{}
+	m := baseModel
+	for {
+		// all moves should be from solr-8 or solr-9 until they are evacuated
+		mPrime, move := m.ComputeNextMove(1, immobileCores)
+		assertNotNil(t, move)
+		if move.FromNode.Name != "solr-8.node" && move.FromNode.Name != "solr-9.node" {
+			// we should now be done evacuating these two nodes
+			for _, n := range m.Nodes {
+				if n.Name == "solr-8.node" || n.Name == "solr-9.node" {
+					if n.coreCount > 0 {
+						t.Errorf("Computed move from %s (%f -> %f) even though evacuating node %s still has %d cores", move.FromNode.Name, m.cost, mPrime.cost, n.Name, n.coreCount)
+					}
+				}
+			}
+			break
+		}
+		immobileCores[move.Core.Name] = true
+		m = mPrime
+	}
+}
+
 func assertEquals(t *testing.T, expected []string, actual []*Move) {
 	if len(expected) != len(actual) {
 		t.Errorf("expected: %v, actual: %v", expected, actual)
@@ -167,12 +197,17 @@ func assertNotNil(t *testing.T, move *Move) {
 	}
 }
 
-func createTestModel(data string) *Model {
+func createTestModel(data string, evacuatingNodes ...string) *Model {
 	var currentNode *Node
 	m := &Model{}
 	seenNodeNames := map[string]bool{}
 	collectionMap := make(map[string]*Collection)
 	lines := strings.Split(data, "\n")
+	evacuatingNodeSet := map[string]bool{}
+	for _, n := range evacuatingNodes {
+		evacuatingNodeSet[n] = true
+	}
+
 	for _, line := range lines {
 		if strings.HasPrefix(line, "solr-") {
 			parts := strings.Split(line, ",")
@@ -181,7 +216,11 @@ func createTestModel(data string) *Model {
 			}
 			name := parts[0]
 			address := parts[1]
-			currentNode = &Node{Name: name, Address: address}
+			currentNode = &Node{
+				Name:       name,
+				Address:    address,
+				Evacuating: evacuatingNodeSet[name],
+			}
 			if seenNodeNames[name] {
 				panic("already seen: " + name)
 			}

@@ -16,21 +16,28 @@ func (m *Model) Cost() float64 {
 	if m.cost == 0 {
 		coreCount := len(m.cores)
 		nodeCount := len(m.Nodes)
+		activeCount := nodeCount
+		// don't consider nodes we are evacuating when calculating the optimal cores/docs/size per node
+		for _, node := range m.Nodes {
+			if node.Evacuating {
+				activeCount--
+			}
+		}
 
 		// An optimal cost would be evenly dividing the cores, docs, and size across the nodes.
-		optimalCoresPerNode := float64(coreCount) / float64(nodeCount)
+		optimalCoresPerNode := float64(coreCount) / float64(activeCount)
 		sqOptCores := optimalCoresPerNode * optimalCoresPerNode
 
-		optimalDocsPerNode := m.Docs / float64(nodeCount)
+		optimalDocsPerNode := m.Docs / float64(activeCount)
 		sqOptDocs := optimalDocsPerNode * optimalDocsPerNode
 
-		optimalSizePerNode := m.Size / float64(nodeCount)
+		optimalSizePerNode := m.Size / float64(activeCount)
 		sqOptSize := optimalSizePerNode * optimalSizePerNode
 
 		for _, node := range m.Nodes {
 			nodeCost := node.Cost(sqOptCores, sqOptDocs, sqOptSize)
 			m.cost += nodeCost
-			if debug {
+			if debug >= 2 {
 				fmt.Printf("node %s cost %f: %d %f %f vs %f %f %f\n", node.Address, nodeCost,
 					node.coreCount, node.Docs, node.Size,
 					optimalCoresPerNode, optimalDocsPerNode, optimalSizePerNode,
@@ -39,9 +46,9 @@ func (m *Model) Cost() float64 {
 		}
 
 		for _, coll := range m.Collections {
-			collCost := coll.Cost(nodeCount)
+			collCost := coll.Cost(nodeCount, activeCount)
 			m.cost += collCost
-			if debug {
+			if debug >= 3 {
 				fmt.Printf("coll %s cost %f\n", coll.Name, collCost)
 			}
 		}
@@ -64,7 +71,7 @@ func (n *Node) Cost(optimalCoresPerNode, optimalDocsPerNode, optimalSizePerNode 
 }
 
 // Create a composite cost for the collection, based on hard-coded rules. Lower cost is better.
-func (c *Collection) Cost(nodeCount int) float64 {
+func (c *Collection) Cost(nodeCount, activeCount int) float64 {
 	coreCount := len(c.cores)
 	if coreCount == 0 {
 		return 0
@@ -84,8 +91,8 @@ func (c *Collection) Cost(nodeCount int) float64 {
 			c.cost += float64(score * score)
 		}
 
-		optimalCoresPerNode := float64(coreCount) / float64(nodeCount)
-		c.cost = c.cost / costOptimal(optimalCoresPerNode, nodeCount)
+		optimalCoresPerNode := float64(coreCount) / float64(activeCount)
+		c.cost = c.cost / costOptimal(optimalCoresPerNode, activeCount)
 
 	}
 	return c.cost
