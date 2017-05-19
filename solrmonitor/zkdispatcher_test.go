@@ -77,7 +77,6 @@ func (cb *testCallback) Handle(e zk.Event) <-chan zk.Event {
 	}
 	if cb.run != nil {
 		cb.run.Wait()
-		cb.run = nil
 	}
 
 	for {
