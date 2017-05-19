@@ -17,6 +17,8 @@
 package solrmonitor
 
 import (
+	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,12 +27,44 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func createSolrMonitor(t *testing.T) (*zk.Conn, *SolrMonitor, *smtesting.ZkTestLogger, error) {
+type testutil struct {
+	t      *testing.T
+	conn   *zk.Conn
+	root   string
+	sm     *SolrMonitor
+	logger *smtesting.ZkTestLogger
+}
+
+func (tu *testutil) teardown() {
+	if err := smtesting.DeleteRecursive(tu.conn, tu.root); err != nil {
+		tu.t.Error(err)
+	}
+	if tu.sm != nil {
+		tu.sm.Close()
+	}
+	tu.conn.Close()
+	tu.logger.AssertNoErrors(tu.t)
+}
+
+func setup(t *testing.T) (*SolrMonitor, *testutil) {
+	t.Parallel()
+
+	pc, _, _, _ := runtime.Caller(1)
+	callerFunc := runtime.FuncForPC(pc)
+	splits := strings.Split(callerFunc.Name(), "/")
+	callerName := splits[len(splits)-1]
+	callerName = strings.Replace(callerName, ".", "_", -1)
+	if !strings.HasPrefix(callerName, "solrmonitor_Test") {
+		t.Fatalf("Unexpected callerName: %s should start with smservice_Test", callerName)
+	}
+
+	root := "/" + callerName
+
 	logger := smtesting.NewZkTestLogger(t)
 	connOption := func(c *zk.Conn) { c.SetLogger(logger) }
-	zkCli, zkEvent, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption)
+	conn, zkEvent, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption)
 	if err != nil {
-		return nil, nil, nil, err
+		t.Fatal(err)
 	}
 
 	// Keep a running log.
@@ -42,161 +76,129 @@ func createSolrMonitor(t *testing.T) (*zk.Conn, *SolrMonitor, *smtesting.ZkTestL
 
 	// Solrmonitor checks the "clusterstate.json" file in the root node it is given.
 	// So seed that file.
-	_, err = zkCli.Create("/solrmonitortest", []byte{}, 0, zk.WorldACL(zk.PermAll))
+	_, err = conn.Create(root, nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil && err != zk.ErrNodeExists {
-		zkCli.Close()
-		return nil, nil, nil, err
+		conn.Close()
+		t.Fatal(err)
 	}
-	_, err = zkCli.Create("/solrmonitortest/clusterstate.json", []byte("{}"), 0, zk.WorldACL(zk.PermAll))
+	_, err = conn.Create(root+"/clusterstate.json", []byte("{}"), 0, zk.WorldACL(zk.PermAll))
 	if err != nil && err != zk.ErrNodeExists {
-		zkCli.Close()
-		return nil, nil, nil, err
+		conn.Close()
+		t.Fatal(err)
 	}
 
-	sm, err := NewSolrMonitorWithRoot(zkCli, logger, "/solrmonitortest")
+	sm, err := NewSolrMonitorWithRoot(conn, logger, root)
 	if err != nil {
-		zkCli.Close()
-		return nil, nil, nil, err
+		conn.Close()
+		t.Fatal(err)
 	}
-	return zkCli, sm, logger, nil
+	return sm, &testutil{
+		t:      t,
+		conn:   conn,
+		root:   root,
+		sm:     sm,
+		logger: logger,
+	}
 }
 
 // For manual testing, hangs open for a long time.
 func disabledTestManual(t *testing.T) {
-	zkCli, sm, logger, err := createSolrMonitor(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer logger.AssertNoErrors(t)
-	defer zkCli.Close()
-	defer sm.Close()
-
+	_, testutil := setup(t)
+	defer testutil.teardown()
 	time.Sleep(10 * time.Minute)
 }
 
 // Test we shut down cleanly when the ZK client is closed.
 func TestCleanCloseZk(t *testing.T) {
-	zkCli, sm, logger, err := createSolrMonitor(t)
+	sm, testutil := setup(t)
+	defer testutil.teardown()
+
+	// Create a second ZK connection to swap out for the cleanup process
+	cleanupConn, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer logger.AssertNoErrors(t)
-	//defer zkCli.Close()
-	defer sm.Close()
+	conn := testutil.conn
+	testutil.conn = cleanupConn
 
 	getRunningProcs := func() int32 { return atomic.LoadInt32(&sm.dispatcher.runningProcs) }
 	shouldBecomeEq(t, 1, getRunningProcs)
-	zkCli.Close()
+	conn.Close()
 	shouldBecomeEq(t, 0, getRunningProcs)
 }
 
 // Test we shut down cleanly when the ClusterState is closed.
 func TestCleanCloseSolrMonitor(t *testing.T) {
-	zkCli, sm, logger, err := createSolrMonitor(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer logger.AssertNoErrors(t)
-	defer zkCli.Close()
-	//defer sm.Close()
+	sm, testutil := setup(t)
+	defer testutil.teardown()
 
 	getRunningProcs := func() int32 { return atomic.LoadInt32(&sm.dispatcher.runningProcs) }
 	shouldBecomeEq(t, 1, getRunningProcs)
 	sm.Close()
+	testutil.sm = nil // prevent double close
 	shouldBecomeEq(t, 0, getRunningProcs)
 }
 
 func TestCollectionChanges(t *testing.T) {
-	zkCli, sm, logger, err := createSolrMonitor(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer logger.AssertNoErrors(t)
-	defer zkCli.Close()
-	defer sm.Close()
-
-	// Clean out any garbage from previous runs.
-	zkCli.Delete("/solrmonitortest/collections/c1/state.json", -1)
-	zkCli.Delete("/solrmonitortest/collections/c1", -1)
-	zkCli.Delete("/solrmonitortest/collections", -1)
-	zkCli.Delete("/solrmonitortest", -1)
+	sm, testutil := setup(t)
+	defer testutil.teardown()
 
 	shouldNotExist(t, sm, "c1")
 
-	zkCli.Create("/solrmonitortest", []byte(""), 0, zk.WorldACL(zk.PermAll))
-	zkCli.Create("/solrmonitortest/collections", []byte(""), 0, zk.WorldACL(zk.PermAll))
-	_, err = zkCli.Create("/solrmonitortest/collections/c1", []byte(""), 0, zk.WorldACL(zk.PermAll))
+	zkCli := testutil.conn
+	zkCli.Create(sm.solrRoot+"/collections", nil, 0, zk.WorldACL(zk.PermAll))
+	_, err := zkCli.Create(sm.solrRoot+"/collections/c1", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zkCli.Delete("/solrmonitortest/collections/c1", -1)
-	defer zkCli.Delete("/solrmonitortest/collections", -1)
-	defer zkCli.Delete("/solrmonitortest", -1)
 
 	shouldNotExist(t, sm, "c1")
 
-	_, err = zkCli.Create("/solrmonitortest/collections/c1/state.json", []byte(""), 0, zk.WorldACL(zk.PermAll))
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zkCli.Delete("/solrmonitortest/collections/c1/state.json", -1)
 
 	shouldNotExist(t, sm, "c1")
 
-	_, err = zkCli.Set("/solrmonitortest/collections/c1/state.json", []byte("{\"c1\":{}}"), -1)
+	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{}}"), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zkCli.Delete("/solrmonitortest/collections/c1/state.json", -1)
 
 	shouldExist(t, sm, "c1")
 
 	// Get a fresh new solr monitor and make sure it starts in the right state.
-	zkCli2, sm2, logger2, err := createSolrMonitor(t)
+	sm2, err := NewSolrMonitorWithRoot(testutil.conn, testutil.logger, testutil.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer logger2.AssertNoErrors(t)
-	defer zkCli2.Close()
 	defer sm2.Close()
 
 	shouldExist(t, sm2, "c1")
 }
 
 func TestBadStateJson(t *testing.T) {
-	zkCli, sm, logger, err := createSolrMonitor(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer zkCli.Close()
-	defer sm.Close()
-
-	// Clean out any garbage from previous runs.
-	zkCli.Delete("/solrmonitortest/collections/c1/state.json", -1)
-	zkCli.Delete("/solrmonitortest/collections/c1", -1)
-	zkCli.Delete("/solrmonitortest/collections", -1)
-	zkCli.Delete("/solrmonitortest", -1)
+	sm, testutil := setup(t)
+	defer testutil.teardown()
 
 	shouldNotExist(t, sm, "c1")
 
-	zkCli.Create("/solrmonitortest", []byte(""), 0, zk.WorldACL(zk.PermAll))
-	zkCli.Create("/solrmonitortest/collections", []byte(""), 0, zk.WorldACL(zk.PermAll))
-	_, err = zkCli.Create("/solrmonitortest/collections/c1", []byte(""), 0, zk.WorldACL(zk.PermAll))
+	zkCli := testutil.conn
+	zkCli.Create(sm.solrRoot+"/collections", nil, 0, zk.WorldACL(zk.PermAll))
+	_, err := zkCli.Create(sm.solrRoot+"/collections/c1", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zkCli.Delete("/solrmonitortest/collections/c1", -1)
-	defer zkCli.Delete("/solrmonitortest/collections", -1)
-	defer zkCli.Delete("/solrmonitortest", -1)
 
 	shouldNotExist(t, sm, "c1")
 
-	_, err = zkCli.Create("/solrmonitortest/collections/c1/state.json", []byte("asdf"), 0, zk.WorldACL(zk.PermAll))
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json", []byte("asdf"), 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zkCli.Delete("/solrmonitortest/collections/c1/state.json", -1)
 
 	shouldError(t, sm, "c1")
-	shouldBecomeEq(t, 1, logger.GetErrorCount)
+	shouldBecomeEq(t, 1, testutil.logger.GetErrorCount)
+	testutil.logger.Clear()
 }

@@ -25,7 +25,7 @@ import (
 )
 
 // Long call; run in a go routine. Run the given split operation and records the result when done.
-func (s *SolrManService) runSplitOperation(split *solrmanapi.OpRecord) {
+func (s *SolrManService) runSplitOperation(split solrmanapi.OpRecord) {
 	err := s.doRunSplitOperation(split)
 	if err != nil {
 		split.Error = fmt.Sprintf("failed SplitShard request: %s with err: %s", split, err)
@@ -42,21 +42,16 @@ func (s *SolrManService) runSplitOperation(split *solrmanapi.OpRecord) {
 		delete(s.inProgressOps, split.Key())
 	}()
 
-	conn := s.RedisPool.Get()
-	defer conn.Close()
-	if _, err := conn.Do("HDEL", OpMapRedisKey, split.Key()); err != nil {
-		s.Logger.Warningf("failed to HDEL split %s from redis: %s", split.Key(), err)
+	if err := s.Storage.DelInProgressOp(split); err != nil {
+		s.Logger.Warningf("failed to DelInProgressOp completed split %s: %s", split.Key(), err)
 	}
-	if _, err := conn.Do("LPUSH", CompletedOpRedisKey, jsonString(split)); err != nil {
-		s.Logger.Warningf("failed to LPUSH completed move %s to redis: %s", split.Key(), err)
-	}
-	if _, err := conn.Do("LTRIM", CompletedOpRedisKey, 0, 99); err != nil {
-		s.Logger.Warningf("failed to LTRIM %s: %s", CompletedOpRedisKey, err)
+	if err := s.Storage.AddCompletedOp(split); err != nil {
+		s.Logger.Warningf("failed to AddCompletedOp completed split %s: %s", split.Key(), err)
 	}
 }
 
 // Run the given split operation; returns an error, or nil if it succeeds.
-func (s *SolrManService) doRunSplitOperation(split *solrmanapi.OpRecord) error {
+func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 	s.Logger.Infof("splitting shard %q of collection %q", split.Shard, split.Collection)
 
 	// Fail if we can't retrieve the initial state.
@@ -73,7 +68,7 @@ func (s *SolrManService) doRunSplitOperation(split *solrmanapi.OpRecord) error {
 		return cherrf(err, "no such shard %s in collection %s", split.Shard, split.Collection)
 	}
 
-	s.Audit.BeforeOp(*split, *coll)
+	s.Audit.BeforeOp(split, *coll)
 	lastZkVersion := coll.ZkNodeVersion
 	success := false
 	defer func() {
@@ -92,9 +87,9 @@ func (s *SolrManService) doRunSplitOperation(split *solrmanapi.OpRecord) error {
 			time.Sleep(5 * time.Second)
 		}
 		if success {
-			s.Audit.SuccessOp(*split, *newCollState)
+			s.Audit.SuccessOp(split, *newCollState)
 		} else {
-			s.Audit.FailedOp(*split, *newCollState)
+			s.Audit.FailedOp(split, *newCollState)
 			s.disable()
 		}
 	}()
@@ -129,7 +124,7 @@ func (s *SolrManService) doRunSplitOperation(split *solrmanapi.OpRecord) error {
 		child1 := split.Shard + "_1"
 		if activeShardExists(coll, child0) && activeShardExists(coll, child1) && inactiveShardExists(coll, split.Shard) {
 			s.Logger.Debugf("shards %s and %s exist and are active, and shard %s is inactive - assuming SPLITSHARD has completed", child0, child1, split.Shard)
-			s.Audit.SuccessOp(*split, *coll) // should log state where parent shard still exists
+			s.Audit.SuccessOp(split, *coll) // should log state where parent shard still exists
 			lastZkVersion = coll.ZkNodeVersion
 			break
 		}

@@ -15,7 +15,6 @@
 package smservice
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -27,7 +26,6 @@ import (
 
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
-	"github.com/garyburd/redigo/redis"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -35,25 +33,16 @@ type SolrManService struct {
 	HttpClient  *http.Client
 	SolrMonitor *solrmonitor.SolrMonitor
 	ZooClient   *zk.Conn
-	RedisPool   *redis.Pool
+	Storage     SolrManStorage
 	Logger      Logger // for "normal" logging
 	AlertLog    Logger // for "alert" logging that should notify engineers
 	Audit       Audit
 	solrClient  *SolrClient
 
 	mu            sync.Mutex
-	inProgressOps map[string]*solrmanapi.OpRecord
+	inProgressOps map[string]solrmanapi.OpRecord
 	statusOp      *solrmanapi.OpRecord // when non-nil, provides admin visibility into solrman's state
 }
-
-const (
-	OpMapRedisKey         = "Solrman:in_progress_op_map"
-	CompletedOpRedisKey   = "Solrman:completed_op_list"
-	EvacuateNodesRedisKey = "Solrman:evacuate_node_list"
-	DisableRedisKey       = "Solrman:disabled"
-	DisableSplitsRedisKey = "Solrman:disable_splits"
-	DisableMovesRedisKey  = "Solrman:disable_moves"
-)
 
 type byStartedRecently []solrmanapi.OpRecord
 
@@ -82,25 +71,16 @@ func (s *SolrManService) ClusterState() (*solrmanapi.SolrmanStatusResponse, erro
 	var rsp solrmanapi.SolrmanStatusResponse
 	rsp.SolrNodes = s.getLiveNodesStatuses(solrNodes, cluster)
 
-	func() {
-		conn := s.RedisPool.Get()
-		defer conn.Close()
-		completedOps, err := redis.Strings(conn.Do("LRANGE", CompletedOpRedisKey, 0, 99))
-		if err != nil {
-			s.Logger.Warningf("failed to LRANGE %s: %s", CompletedOpRedisKey, err)
-		} else {
-			rsp.CompletedSolrOps = make([]solrmanapi.OpRecord, len(completedOps))
-			for i, completedOp := range completedOps {
-				json.NewDecoder(strings.NewReader(completedOp)).Decode(&rsp.CompletedSolrOps[i])
-			}
-		}
-	}()
+	rsp.CompletedSolrOps, err = s.Storage.GetCompletedOps(100)
+	if err != nil {
+		s.Logger.Warningf("failed to get completed solr op list: %s", err)
+	}
 
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		for _, op := range s.inProgressOps {
-			rsp.InProgressSolrOps = append(rsp.InProgressSolrOps, *op)
+			rsp.InProgressSolrOps = append(rsp.InProgressSolrOps, op)
 		}
 		if s.statusOp != nil {
 			rsp.InProgressSolrOps = append(rsp.InProgressSolrOps, *s.statusOp)
@@ -225,38 +205,24 @@ func (s *SolrManService) Init() {
 	if s.inProgressOps != nil {
 		panic("SolrManService initialized more than once")
 	}
-	s.inProgressOps = make(map[string]*solrmanapi.OpRecord)
+	s.inProgressOps = map[string]solrmanapi.OpRecord{}
 
-	inProgressPairs, err := func() ([]string, error) {
-		conn := s.RedisPool.Get()
-		defer conn.Close()
-		return redis.Strings(conn.Do("HGETALL", OpMapRedisKey))
-	}()
+	inProgressOps, err := s.Storage.GetInProgressOps()
 	if err != nil {
-		s.Logger.Warningf("failed to HGETALL %s: %s", OpMapRedisKey, err)
+		s.Logger.Warningf("failed to get in progress ops: %s", err)
 		return
 	}
 
-	for i, val := range inProgressPairs {
-		if i%2 == 0 {
-			// Skip the keys, we just need the values
-			continue
-		}
-
-		op := &solrmanapi.OpRecord{}
-		if err := json.NewDecoder(strings.NewReader(val)).Decode(op); err != nil {
-			s.Logger.Errorf("In progress operation found in redis failed to parse: %s", val)
-			continue
-		}
+	for _, op := range inProgressOps {
 		s.inProgressOps[op.Key()] = op
-		s.Logger.Infof("Resuming from redis: %s", op)
+		s.Logger.Infof("Resuming from storage: %s", op)
 		switch op.Operation {
 		case solrmanapi.OpMoveShard:
 			go s.runMoveOperation(op)
 		case solrmanapi.OpSplitShard:
 			go s.runSplitOperation(op)
 		default:
-			s.Logger.Errorf("In progress operation found in redis with unknown op type: %+v", op)
+			s.Logger.Errorf("In progress operation found in storage with unknown op type: %+v", op)
 			delete(s.inProgressOps, op.Key())
 		}
 	}
@@ -316,7 +282,7 @@ func (s *SolrManService) MoveShard(params *solrmanapi.MoveShardRequest) (*solrma
 	}
 
 	// Basic sanity checks passed.
-	move := &solrmanapi.OpRecord{
+	move := solrmanapi.OpRecord{
 		StartedMs:  nowMillis(),
 		Operation:  solrmanapi.OpMoveShard,
 		Collection: params.Collection,
@@ -329,8 +295,7 @@ func (s *SolrManService) MoveShard(params *solrmanapi.MoveShardRequest) (*solrma
 	defer s.mu.Unlock()
 
 	// See if any op is already in progress for this shard.
-	inProgressOp := s.inProgressOps[move.Key()]
-	if inProgressOp != nil {
+	if inProgressOp, ok := s.inProgressOps[move.Key()]; ok {
 		if inProgressOp.Operation == solrmanapi.OpMoveShard &&
 			inProgressOp.SrcNode == move.SrcNode &&
 			inProgressOp.DstNode == move.DstNode {
@@ -341,11 +306,8 @@ func (s *SolrManService) MoveShard(params *solrmanapi.MoveShardRequest) (*solrma
 		}
 	} else {
 		// Run the operation
-		conn := s.RedisPool.Get()
-		defer conn.Close()
-		result, err := redis.Int(conn.Do("HSET", OpMapRedisKey, move.Key(), jsonString(move)))
-		if result != 1 || err != nil {
-			return nil, cherrf(err, "failed to write operation to redis")
+		if err := s.Storage.AddInProgressOp(move); err != nil {
+			return nil, cherrf(err, "failed to write operation to storage")
 		}
 		s.inProgressOps[move.Key()] = move
 		go s.runMoveOperation(move)
@@ -375,7 +337,7 @@ func (s *SolrManService) SplitShard(params *solrmanapi.SplitShardRequest) (*solr
 	}
 
 	// Basic sanity checks passed.
-	split := &solrmanapi.OpRecord{
+	split := solrmanapi.OpRecord{
 		StartedMs:  nowMillis(),
 		Operation:  solrmanapi.OpSplitShard,
 		Collection: params.Collection,
@@ -386,8 +348,7 @@ func (s *SolrManService) SplitShard(params *solrmanapi.SplitShardRequest) (*solr
 	defer s.mu.Unlock()
 
 	// See if any op is already in progress for this shard.
-	inProgressOp := s.inProgressOps[split.Key()]
-	if inProgressOp != nil {
+	if inProgressOp, ok := s.inProgressOps[split.Key()]; ok {
 		if inProgressOp.Operation == solrmanapi.OpSplitShard {
 			// identical split in progress, just report success
 		} else {
@@ -396,11 +357,8 @@ func (s *SolrManService) SplitShard(params *solrmanapi.SplitShardRequest) (*solr
 		}
 	} else {
 		// Run the operation
-		conn := s.RedisPool.Get()
-		defer conn.Close()
-		result, err := redis.Int(conn.Do("HSET", OpMapRedisKey, split.Key(), jsonString(split)))
-		if result != 1 || err != nil {
-			return nil, cherrf(err, "failed to write operation to redis")
+		if err := s.Storage.AddInProgressOp(split); err != nil {
+			return nil, cherrf(err, "failed to write operation to storage")
 		}
 		s.inProgressOps[split.Key()] = split
 		go s.runSplitOperation(split)
@@ -441,32 +399,14 @@ func nowMillis() int64 {
 	return unixMillis(time.Now())
 }
 
-func jsonString(val interface{}) string {
-	if val == nil {
-		return ""
-	}
-
-	b, err := json.MarshalIndent(val, "", "  ")
-	if err != nil {
-		panic(err.Error())
-	}
-	return string(b)
-}
-
 // Disables solrman
 func (s *SolrManService) disable() {
-	conn := s.RedisPool.Get()
-	defer conn.Close()
-	if result, err := conn.Do("GET", DisableRedisKey); err != nil {
-		s.Logger.Errorf("failed to query redis for disabled state: %s", err)
-		return
-	} else if result != nil {
+	if s.Storage.IsDisabled() {
 		return // already disabled, nothing to do
 	}
 
-	if _, err := conn.Do("SET", DisableRedisKey, "1"); err != nil {
-		s.Logger.Errorf("failed to set disabled state is redis: %s", err)
-		return
+	if err := s.Storage.SetDisabled(true); err != nil {
+		s.Logger.Errorf("failed to set disabled state: %s", err)
 	}
 
 	s.AlertLog.Errorf("automatically disabling after encountering operation error; see logs for details")

@@ -24,7 +24,6 @@ import (
 	"github.com/fullstorydev/gosolr/solrcheck"
 	"github.com/fullstorydev/gosolr/solrman/smmodel"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
-	"github.com/garyburd/redigo/redis"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -62,35 +61,13 @@ func (s *SolrManService) RunSolrMan() {
 			continue
 		}
 
-		var disabled, disableSplits, disableMoves bool
-		var evacuatingNodes []string
-		if err := func() error {
-			conn := s.RedisPool.Get()
-			defer conn.Close()
-			reply, err := redis.Values(conn.Do("MGET", DisableRedisKey, DisableSplitsRedisKey, DisableMovesRedisKey))
-			if err != nil {
-				return cherrf(err, "failed to MGET redis for disabled status")
-			}
-
-			if _, err := redis.Scan(reply, &disabled, &disableSplits, &disableMoves); err != nil {
-				return cherrf(err, "could not parse MGET redis reply as boolean values")
-			}
-
-			reply, err = redis.Values(conn.Do("LRANGE", EvacuateNodesRedisKey, 0, -1))
-			if err != nil {
-				return cherrf(err, "failed to LRANGE redis for hosts to evacuate")
-			}
-			if err := redis.ScanSlice(reply, &evacuatingNodes); err != nil {
-				return cherrf(err, "could not parse LRANGE redis reply as slice of strings")
-			}
-			return nil
-		}(); err != nil {
-			s.setStatusOp("failed to query redis for disabled state")
-			s.Logger.Errorf("failed to query redis for disabled state: %s", err)
+		evacuatingNodes, err := s.Storage.GetEvacuateNodeList()
+		if err != nil {
+			s.Logger.Errorf("failed to determine hosts to evacuate: %s", err)
 			continue
 		}
 
-		if disabled {
+		if s.Storage.IsDisabled() {
 			s.setStatusOp("solrman is disabled")
 			s.Logger.Infof("solrman is disabled")
 			continue
@@ -134,7 +111,7 @@ func (s *SolrManService) RunSolrMan() {
 			s.Logger.Warningf(fmt.Sprintf("There are %d orgs with badly balanced shards.", len(badlyBalancedOrgs)))
 		}
 
-		if disableSplits {
+		if s.Storage.IsSplitsDisabled() {
 			s.Logger.Infof("solrman splits are disabled")
 		} else {
 			shardSplits := computeShardSplits(s, solrStatus)
@@ -162,7 +139,7 @@ func (s *SolrManService) RunSolrMan() {
 			}
 		}
 
-		if disableMoves {
+		if s.Storage.IsMovesDisabled() {
 			s.Logger.Infof("solrman moves are disabled")
 		} else {
 			// Long-running computation!

@@ -125,3 +125,9 @@ func (l *ZkTestLogger) GetErrorCount() int32 {
 	defer l.mu.Unlock()
 	return int32(len(l.errors))
 }
+
+func (l *ZkTestLogger) Clear() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.errors = nil
+}

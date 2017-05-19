@@ -108,11 +108,16 @@ func run(logger *log.Logger) error {
 	smLogger.Infof("Acquired Solrman redis mutex")
 	defer mutex.Unlock()
 
+	storage, err := smservice.NewZkStorage(zooClient, "/solrman", smLogger)
+	if err != nil {
+		return fmt.Errorf("Failed to open zk storage: %s", err)
+	}
+
 	solrManService := &smservice.SolrManService{
 		HttpClient:  httpClient,
 		SolrMonitor: solrMonitor,
 		ZooClient:   zooClient,
-		RedisPool:   redisPool,
+		Storage:     storage,
 		Logger:      smLogger,
 		AlertLog:    smLogger,
 		Audit:       smAudit,

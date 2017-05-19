@@ -23,7 +23,7 @@ import (
 )
 
 // Long call; run in a go routine. Run the given move operation and records the result when done.
-func (s *SolrManService) runMoveOperation(move *solrmanapi.OpRecord) {
+func (s *SolrManService) runMoveOperation(move solrmanapi.OpRecord) {
 	err := s.doRunMoveOperation(move)
 	if err != nil {
 		move.Error = fmt.Sprintf("failed MoveShard request: %s with err: %s", move, err)
@@ -40,21 +40,16 @@ func (s *SolrManService) runMoveOperation(move *solrmanapi.OpRecord) {
 		delete(s.inProgressOps, move.Key())
 	}()
 
-	conn := s.RedisPool.Get()
-	defer conn.Close()
-	if _, err := conn.Do("HDEL", OpMapRedisKey, move.Key()); err != nil {
-		s.Logger.Warningf("failed to HDEL completed move %s from redis: %s", move.Key(), err)
+	if err := s.Storage.DelInProgressOp(move); err != nil {
+		s.Logger.Warningf("failed to DelInProgressOp completed move %s: %s", move.Key(), err)
 	}
-	if _, err := conn.Do("LPUSH", CompletedOpRedisKey, jsonString(move)); err != nil {
-		s.Logger.Warningf("failed to LPUSH completed move %s to redis: %s", move.Key(), err)
-	}
-	if _, err := conn.Do("LTRIM", CompletedOpRedisKey, 0, 99); err != nil {
-		s.Logger.Warningf("failed to LTRIM %s: %s", CompletedOpRedisKey, err)
+	if err := s.Storage.AddCompletedOp(move); err != nil {
+		s.Logger.Warningf("failed to AddCompletedOp completed move %s: %s", move.Key(), err)
 	}
 }
 
 // Run the given move operation; returns an error, or nil if it succeeds.
-func (s *SolrManService) doRunMoveOperation(move *solrmanapi.OpRecord) error {
+func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 	// Fail if we can't retrieve the initial state.
 	coll, err := s.SolrMonitor.GetCollectionState(move.Collection)
 	if err != nil {
@@ -72,7 +67,7 @@ func (s *SolrManService) doRunMoveOperation(move *solrmanapi.OpRecord) error {
 		replicas = shard.Replicas
 	}
 
-	s.Audit.BeforeOp(*move, *coll)
+	s.Audit.BeforeOp(move, *coll)
 	lastZkVersion := coll.ZkNodeVersion
 	success := false
 	defer func() {
@@ -91,9 +86,9 @@ func (s *SolrManService) doRunMoveOperation(move *solrmanapi.OpRecord) error {
 			time.Sleep(5 * time.Second)
 		}
 		if success {
-			s.Audit.SuccessOp(*move, *newCollState)
+			s.Audit.SuccessOp(move, *newCollState)
 		} else {
-			s.Audit.FailedOp(*move, *newCollState)
+			s.Audit.FailedOp(move, *newCollState)
 			s.disable()
 		}
 	}()
@@ -122,7 +117,7 @@ func (s *SolrManService) doRunMoveOperation(move *solrmanapi.OpRecord) error {
 			if replica := findReplica(replicas, move.DstNode, activeReplica); replica != "" {
 				// found a good replica!  sync complete
 				s.Logger.Debugf("active replica %q found on %s - time to delete the original", replica, move.DstNode)
-				s.Audit.SuccessOp(*move, *coll) // should log state where both replicas exist
+				s.Audit.SuccessOp(move, *coll) // should log state where both replicas exist
 				lastZkVersion = coll.ZkNodeVersion
 				break
 			}
