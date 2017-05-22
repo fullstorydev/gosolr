@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fullstorydev/gosolr/solrmonitor/smtesting"
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -32,11 +32,11 @@ type testutil struct {
 	conn   *zk.Conn
 	root   string
 	sm     *SolrMonitor
-	logger *smtesting.ZkTestLogger
+	logger *smutil.ZkTestLogger
 }
 
 func (tu *testutil) teardown() {
-	if err := smtesting.DeleteRecursive(tu.conn, tu.root); err != nil {
+	if err := smutil.DeleteRecursive(tu.conn, tu.root); err != nil {
 		tu.t.Error(err)
 	}
 	if tu.sm != nil {
@@ -60,7 +60,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 
 	root := "/" + callerName
 
-	logger := smtesting.NewZkTestLogger(t)
+	logger := smutil.NewZkTestLogger(t)
 	connOption := func(c *zk.Conn) { c.SetLogger(logger) }
 	conn, zkEvent, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption)
 	if err != nil {

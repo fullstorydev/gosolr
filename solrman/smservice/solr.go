@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrmonitor"
 )
 
@@ -214,21 +215,21 @@ func (sc *SolrClient) doCollectionCall(params url.Values, rsp HasErrorRsp) error
 	// Pick a random live node
 	ln, err := sc.SolrMonitor.GetLiveNodes()
 	if err != nil {
-		return cherrf(err, "failed to get live nodes")
+		return smutil.Cherrf(err, "failed to get live nodes")
 	}
 	solrNode := ln[rand.Intn(len(ln))]
 
 	// parse the node name to get IP, port, etc.
 	ip, port, root, err := parseNodeName(solrNode)
 	if err != nil {
-		return cherrf(err, "failed to parse node name")
+		return smutil.Cherrf(err, "failed to parse node name")
 	}
 
 	params.Add("wt", "json")
 	urls := fmt.Sprintf("http://%s:%s/%s/admin/collections?%s", ip, port, root, params.Encode())
 
 	if err := httpGetJson(urls, rsp, sc.HttpClient); err != nil {
-		return cherrf(err, "failed to query %s with params: %s", urls, params)
+		return smutil.Cherrf(err, "failed to query %s with params: %s", urls, params)
 	}
 
 	return nil
@@ -239,14 +240,14 @@ func (sc *SolrClient) doCoreCall(solrNode string, params url.Values, rsp HasErro
 	// parse the node name to get IP, port, etc.
 	ip, port, root, err := parseNodeName(solrNode)
 	if err != nil {
-		return cherrf(err, "failed to parse node name")
+		return smutil.Cherrf(err, "failed to parse node name")
 	}
 
 	params.Add("wt", "json")
 	urls := fmt.Sprintf("http://%s:%s/%s/admin/cores?%s", ip, port, root, params.Encode())
 
 	if err := httpGetJson(urls, rsp, sc.HttpClient); err != nil {
-		return cherrf(err, "failed to query %s with params: %s", urls, params)
+		return smutil.Cherrf(err, "failed to query %s with params: %s", urls, params)
 	}
 
 	return nil
@@ -255,27 +256,27 @@ func (sc *SolrClient) doCoreCall(solrNode string, params url.Values, rsp HasErro
 func httpGetJson(url string, rsp HasErrorRsp, client *http.Client) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return cherrf(err, "failed to create request")
+		return smutil.Cherrf(err, "failed to create request")
 	}
 
 	rawRsp, err := client.Do(req)
 	if err != nil {
-		return cherrf(err, "failed request")
+		return smutil.Cherrf(err, "failed request")
 	}
 
 	defer drainAndClose(rawRsp.Body)
 	if err := checkResponse(rawRsp); err != nil {
-		return cherrf(err, "failed request")
+		return smutil.Cherrf(err, "failed request")
 	}
 
 	decoder := json.NewDecoder(rawRsp.Body)
 	decoder.UseNumber()
 	if err := decoder.Decode(rsp); err != nil {
-		return cherrf(err, "invalid json response")
+		return smutil.Cherrf(err, "invalid json response")
 	}
 
 	if err := rsp.ErrorRsp(); err != nil {
-		return cherrf(err, "solr returned an error response")
+		return smutil.Cherrf(err, "solr returned an error response")
 	}
 
 	return nil

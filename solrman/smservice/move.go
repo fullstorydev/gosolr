@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
 )
@@ -56,13 +57,13 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 		return err
 	}
 	if coll == nil {
-		return cherrf(err, "no such collection (maybe it disappeared?)")
+		return smutil.Cherrf(err, "no such collection (maybe it disappeared?)")
 	}
 
 	var replicas map[string]solrmonitor.ReplicaState
 	if shard, ok := coll.Shards[move.Shard]; !ok {
 		// guard against no-such-shard
-		return cherrf(err, "no such shard %s in collection %s", move.Shard, move.Collection)
+		return smutil.Cherrf(err, "no such shard %s in collection %s", move.Shard, move.Collection)
 	} else {
 		replicas = shard.Replicas
 	}
@@ -98,7 +99,7 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 	if replica := findReplica(replicas, move.DstNode, anyReplica); replica == "" {
 		// No replica exists, need to add one.
 		if err := s.solrClient.AddReplica(move.Collection, move.Shard, move.DstNode, ""); err != nil {
-			return cherrf(err, "failed to issue ADDREPLICA command")
+			return smutil.Cherrf(err, "failed to issue ADDREPLICA command")
 		}
 		s.Logger.Debugf("ADDREPLICA command issued successfully MoveShard request: %s", move)
 	}
@@ -129,11 +130,11 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 	// Now delete the original
 	original := findReplica(replicas, move.SrcNode, activeReplica)
 	if original == "" {
-		return errorf("no original found for shard %s of collection %q on node %s!?", move.Shard, move.Collection, move.SrcNode)
+		return smutil.Errorf("no original found for shard %s of collection %q on node %s!?", move.Shard, move.Collection, move.SrcNode)
 	}
 
 	if err := s.solrClient.DeleteReplica(move.Collection, move.Shard, original, ""); err != nil {
-		return cherrf(err, "failed to issue DELETEREPLICA command")
+		return smutil.Cherrf(err, "failed to issue DELETEREPLICA command")
 	}
 	s.Logger.Debugf("DELETEREPLICA command issued successfully MoveShard request: %s", move)
 	success = true

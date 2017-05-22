@@ -21,6 +21,8 @@ import (
 	"os"
 	"sync/atomic"
 	"time"
+
+	"github.com/fullstorydev/gosolr/smutil"
 )
 
 var idCounter = rand.NewSource(time.Now().UnixNano()).Int63() >> 1
@@ -37,10 +39,10 @@ func newSolrRequestId() string {
 // checkRequestStatus queries SolrCloud for the current status of a previously-submitted asynchronous api call,
 // returning whether the command has completed (successfully or not), the error message (if the command failed),
 // or an error struct if we failed to query Solr for some reason.
-func checkRequestStatus(logger Logger, cmdName string, requestId string, solrc *SolrClient) (isDone bool, errMsg string, err error) {
+func checkRequestStatus(logger smutil.Logger, cmdName string, requestId string, solrc *SolrClient) (isDone bool, errMsg string, err error) {
 	status, err := solrc.RequestStatus(requestId)
 	if err != nil {
-		return false, "", cherrf(err, "failed to issue REQUESTSTATUS command")
+		return false, "", smutil.Cherrf(err, "failed to issue REQUESTSTATUS command")
 	}
 
 	logger.Debugf("REQUESTSTATUS command returned status %q for requestid %q", status, requestId)
@@ -58,6 +60,6 @@ func checkRequestStatus(logger Logger, cmdName string, requestId string, solrc *
 		// async command is not done yet
 		return false, "", nil
 	default:
-		return false, "", errorf("unknown collections API status")
+		return false, "", smutil.Errorf("unknown collections API status")
 	}
 }

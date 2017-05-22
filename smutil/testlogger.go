@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package smtesting
+package smutil
 
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"runtime"
 	"strings"
 	"sync"
@@ -85,49 +84,4 @@ func (t *logger) decorate(s string, skipFrames int) string {
 	}
 	buf.WriteByte('\n')
 	return buf.String()
-}
-
-func NewZkTestLogger(t *testing.T) *ZkTestLogger {
-	return &ZkTestLogger{
-		testLogger: AdaptTestLogger(t),
-	}
-}
-
-// Adapts test logging to the ZK logging interface. captures errors.
-type ZkTestLogger struct {
-	mu         sync.RWMutex
-	testLogger TestLogger
-	errors     []error
-}
-
-func (l *ZkTestLogger) Printf(format string, args ...interface{}) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	for _, arg := range args {
-		err, isError := arg.(error)
-		if isError && err != io.EOF {
-			l.errors = append(l.errors, err)
-		}
-	}
-	l.testLogger.DoLog(fmt.Sprintf(format, args...), 2)
-}
-
-func (l *ZkTestLogger) AssertNoErrors(t *testing.T) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	for _, err := range l.errors {
-		t.Errorf("Error was logged %s", err)
-	}
-}
-
-func (l *ZkTestLogger) GetErrorCount() int32 {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return int32(len(l.errors))
-}
-
-func (l *ZkTestLogger) Clear() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.errors = nil
 }

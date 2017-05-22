@@ -1,4 +1,4 @@
-// Copyright 2017 FullStory, Inc.
+// Copyright 2016 FullStory, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,27 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package smtesting
+package smutil
 
-import "github.com/samuel/go-zookeeper/zk"
-
-// delete the specified path and its children, recursively.
-func DeleteRecursive(c *zk.Conn, path string) error {
-	children, _, err := c.Children(path)
-	if err != nil {
-		if err == zk.ErrNoNode {
-			// if the node doesn't even exist, we are done!
-			return nil
-		}
-		return err
-	}
-
-	for _, child := range children {
-		p := path + "/" + child
-		if err := DeleteRecursive(c, p); err != nil {
-			return err
-		}
-	}
-
-	return c.Delete(path, -1)
+// Logging interface used throughout gosolr.
+type Logger interface {
+	Debugf(format string, args ...interface{})
+	Infof(format string, args ...interface{})
+	Warningf(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
 }

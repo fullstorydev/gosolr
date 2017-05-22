@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
 )
@@ -61,11 +62,11 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 	}
 
 	if coll == nil {
-		return cherrf(err, "no such collection (maybe it disappeared?)")
+		return smutil.Cherrf(err, "no such collection (maybe it disappeared?)")
 	}
 
 	if _, ok := coll.Shards[split.Shard]; !ok { // guard against no-such-shard
-		return cherrf(err, "no such shard %s in collection %s", split.Shard, split.Collection)
+		return smutil.Cherrf(err, "no such shard %s in collection %s", split.Shard, split.Collection)
 	}
 
 	s.Audit.BeforeOp(split, *coll)
@@ -97,7 +98,7 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 	// this must be the initial request, so the first step is to start a SPLITSHARD command
 	requestId := newSolrRequestId()
 	if err := s.solrClient.SplitShard(split.Collection, split.Shard, requestId); err != nil {
-		return cherrf(err, "failed to issue SPLITSHARD command")
+		return smutil.Cherrf(err, "failed to issue SPLITSHARD command")
 	}
 	s.Logger.Debugf("async SPLITSHARD command issued successfully (requestid = %q)", requestId)
 
@@ -106,9 +107,9 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 		// Only check request status to determine error conditions.
 		_, errMsg, err := checkRequestStatus(s.Logger, "SPLITSHARD", requestId, s.solrClient)
 		if err != nil {
-			return cherrf(err, "failed to get status of request %q", requestId)
+			return smutil.Cherrf(err, "failed to get status of request %q", requestId)
 		} else if errMsg != "" {
-			return errorf("async SPLITSHARD failed: %s", errMsg)
+			return smutil.Errorf("async SPLITSHARD failed: %s", errMsg)
 		}
 
 		// Track the split ourselves, because solr is not reliable at reporting async results.
@@ -117,7 +118,7 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 		// been done for a long time)
 		coll, err := s.SolrMonitor.GetCollectionState(split.Collection)
 		if err != nil {
-			return cherrf(err, "failed to read cluster state")
+			return smutil.Cherrf(err, "failed to read cluster state")
 		}
 
 		child0 := split.Shard + "_0"
@@ -143,7 +144,7 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 			success = true
 			return nil
 		} else {
-			return cherrf(err, "failed to issue DELETESHARD command")
+			return smutil.Cherrf(err, "failed to issue DELETESHARD command")
 		}
 	}
 	s.Logger.Infof("deleted shard %q of collection %q", split.Shard, split.Collection)
@@ -170,7 +171,7 @@ func inactiveShardExists(coll *solrmonitor.CollectionState, target string) bool 
 }
 
 func isNoSuchShardError(err error, collName, shardName string) *ErrorRsp {
-	if chErr, ok := err.(*chainedError); ok {
+	if chErr, ok := err.(smutil.ChainedError); ok {
 		err = chErr.Root()
 	}
 

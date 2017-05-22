@@ -19,11 +19,12 @@ import (
 	"encoding/json"
 	"sort"
 
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func NewZkStorage(conn *zk.Conn, root string, logger Logger) (*ZkStorage, error) {
+func NewZkStorage(conn *zk.Conn, root string, logger smutil.Logger) (*ZkStorage, error) {
 	ret := &ZkStorage{conn: conn, root: root, logger: logger}
 	if err := ret.init(); err != nil {
 		return nil, err
@@ -34,7 +35,7 @@ func NewZkStorage(conn *zk.Conn, root string, logger Logger) (*ZkStorage, error)
 type ZkStorage struct {
 	conn   *zk.Conn
 	root   string
-	logger Logger
+	logger smutil.Logger
 }
 
 var _ SolrManStorage = &ZkStorage{}
@@ -43,7 +44,7 @@ func (s *ZkStorage) init() error {
 	for _, path := range []string{s.root, s.inProgressPath(), s.completedPath(), s.evacuatePath()} {
 		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
 		if err != nil && err != zk.ErrNodeExists {
-			return cherrf(err, "could not create %s in ZK", path)
+			return smutil.Cherrf(err, "could not create %s in ZK", path)
 		}
 	}
 	return nil
@@ -81,7 +82,7 @@ func (s *ZkStorage) AddInProgressOp(op solrmanapi.OpRecord) error {
 		_, err = s.conn.Set(path, data, -1)
 	}
 	if err != nil {
-		return cherrf(err, "could not create save op at %s in ZK", path)
+		return smutil.Cherrf(err, "could not create save op at %s in ZK", path)
 	}
 	return nil
 }
@@ -90,7 +91,7 @@ func (s *ZkStorage) DelInProgressOp(op solrmanapi.OpRecord) error {
 	path := s.inProgressPath() + "/" + op.Key()
 	err := s.conn.Delete(path, -1)
 	if err != nil && err != zk.ErrNoNode {
-		return cherrf(err, "could not delete op at %s in ZK", path)
+		return smutil.Cherrf(err, "could not delete op at %s in ZK", path)
 	}
 	return nil
 }
@@ -102,7 +103,7 @@ func (s *ZkStorage) GetInProgressOps() ([]solrmanapi.OpRecord, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, cherrf(err, "could not get children at %s in ZK", path)
+		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
 	}
 
 	var ret []solrmanapi.OpRecord
@@ -112,7 +113,7 @@ func (s *ZkStorage) GetInProgressOps() ([]solrmanapi.OpRecord, error) {
 		if err == zk.ErrNoNode {
 			continue // could be a valid race condition, just ignore this child
 		} else if err != nil {
-			return nil, cherrf(err, "could not get %s in ZK", childPath)
+			return nil, smutil.Cherrf(err, "could not get %s in ZK", childPath)
 		}
 
 		op := solrmanapi.OpRecord{}
@@ -134,7 +135,7 @@ func (s *ZkStorage) AddCompletedOp(op solrmanapi.OpRecord) error {
 	data := []byte(jsonString(&op))
 	_, err := s.conn.Create(path, data, zk.FlagSequence, zk.WorldACL(zk.PermAll))
 	if err != nil {
-		return cherrf(err, "could not create create completed op at %s in ZK", path)
+		return smutil.Cherrf(err, "could not create create completed op at %s in ZK", path)
 	}
 
 	// If there are too many completed ops, delete the eldest.
@@ -177,7 +178,7 @@ func (s *ZkStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, cherrf(err, "could not get children at %s in ZK", path)
+		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
 	}
 
 	var ret []solrmanapi.OpRecord
@@ -187,7 +188,7 @@ func (s *ZkStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, error) {
 		if err == zk.ErrNoNode {
 			continue // could be a valid race condition, just ignore this child
 		} else if err != nil {
-			return nil, cherrf(err, "could not get %s in ZK", childPath)
+			return nil, smutil.Cherrf(err, "could not get %s in ZK", childPath)
 		}
 
 		op := solrmanapi.OpRecord{}
@@ -214,7 +215,7 @@ func (s *ZkStorage) GetEvacuateNodeList() ([]string, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, cherrf(err, "could not get children at %s in ZK", path)
+		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
 	}
 	sort.Strings(children)
 	return children, nil
@@ -237,12 +238,12 @@ func (s *ZkStorage) SetDisabled(disabled bool) error {
 	if disabled {
 		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
 		if err != nil && err != zk.ErrNodeExists {
-			return cherrf(err, "could not create %s in ZK", path)
+			return smutil.Cherrf(err, "could not create %s in ZK", path)
 		}
 	} else {
 		err := s.conn.Delete(path, -1)
 		if err != nil && err != zk.ErrNoNode {
-			return cherrf(err, "could not delete %s in ZK", path)
+			return smutil.Cherrf(err, "could not delete %s in ZK", path)
 		}
 	}
 	return nil

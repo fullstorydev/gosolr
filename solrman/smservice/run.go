@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrcheck"
 	"github.com/fullstorydev/gosolr/solrman/smmodel"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
@@ -243,7 +244,7 @@ func MinInt64(a, b int64) int64 {
 	return b
 }
 
-func flagBadlyBalancedOrgs(logger Logger, s *SolrManService, clusterState solrmanapi.SolrCloudStatus) map[string]bool {
+func flagBadlyBalancedOrgs(logger smutil.Logger, s *SolrManService, clusterState solrmanapi.SolrCloudStatus) map[string]bool {
 	orgToMin := make(map[string]int64)
 	orgToMax := make(map[string]int64)
 
@@ -384,7 +385,7 @@ func createModel(clusterState solrmanapi.SolrCloudStatus, evacuatingNodes []stri
 
 	for _, nodeStatus := range clusterState {
 		if seenNodeNames[nodeStatus.NodeName] {
-			return nil, errorf("already seen: %v", nodeStatus.NodeName)
+			return nil, smutil.Errorf("already seen: %v", nodeStatus.NodeName)
 		}
 		seenNodeNames[nodeStatus.NodeName] = true
 		currentNode = &smmodel.Node{

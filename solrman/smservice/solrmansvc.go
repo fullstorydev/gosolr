@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
 	"github.com/samuel/go-zookeeper/zk"
@@ -34,8 +35,8 @@ type SolrManService struct {
 	SolrMonitor *solrmonitor.SolrMonitor
 	ZooClient   *zk.Conn
 	Storage     SolrManStorage
-	Logger      Logger // for "normal" logging
-	AlertLog    Logger // for "alert" logging that should notify engineers
+	Logger      smutil.Logger // for "normal" logging
+	AlertLog    smutil.Logger // for "alert" logging that should notify engineers
 	Audit       Audit
 	solrClient  *SolrClient
 
@@ -60,12 +61,12 @@ func (a byFinishedRecently) Less(i, j int) bool { return a[i].FinishedMs > a[j].
 func (s *SolrManService) ClusterState() (*solrmanapi.SolrmanStatusResponse, error) {
 	cluster, err := s.SolrMonitor.GetCurrentState()
 	if err != nil {
-		return nil, cherrf(err, "failed to read cluster state")
+		return nil, smutil.Cherrf(err, "failed to read cluster state")
 	}
 
 	solrNodes, err := s.SolrMonitor.GetLiveNodes()
 	if err != nil {
-		return nil, cherrf(err, "failed to get live_nodes")
+		return nil, smutil.Cherrf(err, "failed to get live_nodes")
 	}
 
 	var rsp solrmanapi.SolrmanStatusResponse
@@ -235,7 +236,7 @@ func (s *SolrManService) MoveShard(params *solrmanapi.MoveShardRequest) (*solrma
 
 	coll, err := s.SolrMonitor.GetCollectionState(params.Collection)
 	if err != nil {
-		return nil, cherrf(err, "failed to read cluster state")
+		return nil, smutil.Cherrf(err, "failed to read cluster state")
 	}
 	if coll == nil {
 		// Error, no such collection
@@ -245,7 +246,7 @@ func (s *SolrManService) MoveShard(params *solrmanapi.MoveShardRequest) (*solrma
 
 	liveNodes, err := s.SolrMonitor.GetLiveNodes()
 	if err != nil {
-		return nil, cherrf(err, "failed to read live_nodes")
+		return nil, smutil.Cherrf(err, "failed to read live_nodes")
 	}
 
 	liveNodeSet := map[string]bool{}
@@ -307,7 +308,7 @@ func (s *SolrManService) MoveShard(params *solrmanapi.MoveShardRequest) (*solrma
 	} else {
 		// Run the operation
 		if err := s.Storage.AddInProgressOp(move); err != nil {
-			return nil, cherrf(err, "failed to write operation to storage")
+			return nil, smutil.Cherrf(err, "failed to write operation to storage")
 		}
 		s.inProgressOps[move.Key()] = move
 		go s.runMoveOperation(move)
@@ -322,7 +323,7 @@ func (s *SolrManService) SplitShard(params *solrmanapi.SplitShardRequest) (*solr
 
 	coll, err := s.SolrMonitor.GetCollectionState(params.Collection)
 	if err != nil {
-		return nil, cherrf(err, "failed to read cluster state")
+		return nil, smutil.Cherrf(err, "failed to read cluster state")
 	}
 	if coll == nil {
 		// Error, no such collection
@@ -358,7 +359,7 @@ func (s *SolrManService) SplitShard(params *solrmanapi.SplitShardRequest) (*solr
 	} else {
 		// Run the operation
 		if err := s.Storage.AddInProgressOp(split); err != nil {
-			return nil, cherrf(err, "failed to write operation to storage")
+			return nil, smutil.Cherrf(err, "failed to write operation to storage")
 		}
 		s.inProgressOps[split.Key()] = split
 		go s.runSplitOperation(split)

@@ -31,23 +31,20 @@ import (
 
 	"encoding/json"
 
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/smservice"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
-	"github.com/garyburd/redigo/redis"
-	"github.com/hjr265/redsync.go/redsync"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
 const (
-	MaxIdleConnsPerHost  = 1024
-	SolrmanMutexRedisKey = "Solrman:mutex"
+	MaxIdleConnsPerHost = 1024
 )
 
 var (
-	port        = flag.Int("port", 8984, "http port to listen on for local admin / queries")
-	zkServers   = flag.String("zkServers", "127.0.0.1:2181", "comma separated list of the zk servers solr is using; ip:port or hostname:port")
-	redisServer = flag.String("redisServer", "127.0.0.1:6379", "redis server to store solrman's internal state")
+	port      = flag.Int("port", 8984, "http port to listen on for local admin / queries")
+	zkServers = flag.String("zkServers", "127.0.0.1:2181/solr", `comma separated list of the zk servers solr is using; ip:port or hostname:port, followed by /solr`)
 )
 
 func main() {
@@ -65,7 +62,14 @@ func run(logger *log.Logger) error {
 		panic("This program does not take arguments.")
 	}
 
-	logger.Printf("Solrman is starting up: http port=%d; zkServers=%s; redisServer=%s", *port, *zkServers, *redisServer)
+	zkHosts, solrZkPath, err := smutil.ParseZkServersFlag(*zkServers)
+	if err != nil {
+		return smutil.Cherrf(err, "error parsing -zkServers flag %s", *zkServers)
+	}
+	solrmanZkPath := solrZkPath + "man"
+	solrmanMutexZkPath := solrmanZkPath + "/mutex"
+
+	logger.Printf("Starting solrman with zkHosts=%v solrZkPath=%s solrmanZkPath=%s", zkHosts, solrZkPath, solrmanZkPath)
 
 	zkLogger := &zookeeperLogger{logger: logger}
 	smLogger := &solrmanLogger{logger: logger}
@@ -77,41 +81,33 @@ func run(logger *log.Logger) error {
 
 	zooClient, err := NewZkConn(zkLogger, strings.Split(*zkServers, ","))
 	if err != nil {
-		return err
+		return smutil.Cherrf(err, "Failed to connect to zookeeper")
 	}
 	defer zooClient.Close()
 
-	solrMonitor, err := solrmonitor.NewSolrMonitorWithLogger(zooClient, zkLogger)
+	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zooClient, zkLogger, solrZkPath)
 	if err != nil {
-		return err
+		return smutil.Cherrf(err, "Failed to create solrMonitor")
 	}
 	defer solrMonitor.Close()
 
 	httpClient := &http.Client{}
 
-	redisPool := NewRedisPool(*redisServer)
-	if err := func() error {
-		conn := redisPool.Get()
-		defer conn.Close()
-		if _, err := conn.Do("PING"); err != nil {
-			return fmt.Errorf("Failed to connect redis on first try: %s", err)
-		}
-		return nil
-	}(); err != nil {
-		return err
+	storage, err := smservice.NewZkStorage(zooClient, solrmanZkPath, smLogger)
+	if err != nil {
+		return smutil.Cherrf(err, "Failed to open zk storage")
 	}
 
-	mutex, err := acquireAndMonitorRedisMutex(smLogger, redisPool)
-	if err != nil {
-		return fmt.Errorf("Failed to acquire Solrman redis mutex: %s", err)
+	onLostMutex := func() {
+		// Terminate if I lose the ZK mutex.
+		syscall.Kill(os.Getpid(), syscall.SIGINT)
 	}
-	smLogger.Infof("Acquired Solrman redis mutex")
-	defer mutex.Unlock()
-
-	storage, err := smservice.NewZkStorage(zooClient, "/solrman", smLogger)
+	release, err := smutil.AcquireAndMonitorZkMutex(smLogger, zooClient, solrmanMutexZkPath, onLostMutex)
 	if err != nil {
-		return fmt.Errorf("Failed to open zk storage: %s", err)
+		return smutil.Cherrf(err, "Failed to acquire Solrman ZK mutex")
 	}
+	logger.Print("Acquired Solrman ZK mutex")
+	defer release()
 
 	solrManService := &smservice.SolrManService{
 		HttpClient:  httpClient,
@@ -255,50 +251,11 @@ func ListenAndServe(srv *http.Server) error {
 	return nil // just ignore any error if we closed the server ourselves
 }
 
-// Create a redis mutex to ensure we're the only solrman; 2 solrman instances would be bad.
-func acquireAndMonitorRedisMutex(logger *solrmanLogger, redisPool *redis.Pool) (*redsync.Mutex, error) {
-	logger.Infof("Acquiring redis mutex...")
-	mutex, err := redsync.NewMutexWithPool(SolrmanMutexRedisKey, []*redis.Pool{redisPool})
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create redis mutex: %s", err)
-	}
-	// Lock lasts 1 minute, we refresh it every 30 seconds in the steady state.
-	// For initial acquisition, try every 5 seconds for just over the expiry time.
-	// If we can't acquire the lock in 65 seconds we're probably not going to because someone else has it.
-	mutex.Expiry = 60 * time.Second
-	mutex.Delay = 5 * time.Second
-	mutex.Tries = 12 + 1
-	if err := mutex.Lock(); err != nil {
-		return nil, fmt.Errorf("Failed to acquire redis mutex: %s", err)
-	}
-
-	// Monitor the mutex and touch it every 30 seconds; if we lose the mutex (somehow) shut down.
-	go func() {
-		for {
-			time.Sleep(30 * time.Second)
-			touched := mutex.Touch()
-			if !touched {
-				// try to re-acquire the lock
-				logger.Warningf("Lost Solrman mutex, attempting to re-acquire")
-				mutex.Unlock()
-				if mutex.Lock() == nil {
-					logger.Warningf("Re-acquired Solrman mutex")
-					continue
-				}
-				logger.Errorf("Lost Solrman redis mutex, exiting")
-				os.Exit(1)
-			}
-		}
-	}()
-
-	return mutex, nil
-}
-
 type solrmanLogger struct {
 	logger *log.Logger
 }
 
-var _ smservice.Logger = &solrmanLogger{}
+var _ smutil.Logger = &solrmanLogger{}
 
 func (l *solrmanLogger) Debugf(format string, args ...interface{}) {
 	l.logger.Printf("DEBUG: "+format, args...)
@@ -383,28 +340,4 @@ var _ zk.Logger = &zookeeperLogger{}
 
 func (l *zookeeperLogger) Printf(format string, args ...interface{}) {
 	l.logger.Printf("zk: "+format, args...)
-}
-
-func NewRedisPool(redisServer string) *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:     10,
-		MaxActive:   100,
-		IdleTimeout: 240 * time.Second,
-		Wait:        true,
-		Dial: func() (redis.Conn, error) {
-			// made up timeouts to avoid blocking too long on redis
-			return redis.Dial("tcp", redisServer,
-				redis.DialConnectTimeout(50*time.Millisecond),
-				redis.DialReadTimeout(50*time.Millisecond),
-			)
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			// made up heuristic: test the connection if it's been idle > minute.
-			if time.Now().Sub(t) > time.Minute {
-				_, err := c.Do("PING")
-				return err
-			}
-			return nil
-		},
-	}
 }

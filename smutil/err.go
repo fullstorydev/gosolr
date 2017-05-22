@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package smservice
+package smutil
 
 import (
 	"fmt"
@@ -32,6 +32,14 @@ type chainedError struct {
 	msg   string
 }
 
+type ChainedError interface {
+	error
+	Cause() error
+	Root() error
+}
+
+var _ ChainedError = &chainedError{}
+
 // Returns the cause of this error, which may be nil
 func (err *chainedError) Cause() error {
 	return err.cause
@@ -43,7 +51,7 @@ func (err *chainedError) Root() error {
 		return err
 	}
 
-	if causeIsChain, ok := err.cause.(*chainedError); ok {
+	if causeIsChain, ok := err.cause.(ChainedError); ok {
 		return causeIsChain.Root()
 	}
 
@@ -78,15 +86,15 @@ func newChainedError(cause error, file string, line int, msg string) *chainedErr
 	}
 }
 
-func cherrf(cause error, format string, a ...interface{}) *chainedError {
-	return reachf(2, cause, format, a...)
+func Cherrf(cause error, format string, a ...interface{}) ChainedError {
+	return Reachf(2, cause, format, a...)
 }
 
-func errorf(format string, a ...interface{}) *chainedError {
-	return reachf(2, nil, format, a...)
+func Errorf(format string, a ...interface{}) ChainedError {
+	return Reachf(2, nil, format, a...)
 }
 
-func reachf(calldepth int, cause error, format string, a ...interface{}) *chainedError {
+func Reachf(calldepth int, cause error, format string, a ...interface{}) ChainedError {
 	s := fmt.Sprintf(format, a...)
 	file, line := fileAndLine(calldepth)
 	return newChainedError(cause, file, line, s)
