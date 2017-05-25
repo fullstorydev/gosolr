@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fullstorydev/gosolr/smtestutil"
 	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/samuel/go-zookeeper/zk"
 )
@@ -30,7 +31,7 @@ import (
 type testutil struct {
 	t      *testing.T
 	s      *ZkStorage
-	logger *smutil.ZkTestLogger
+	logger *smtestutil.ZkTestLogger
 }
 
 func (tu *testutil) teardown() {
@@ -75,7 +76,7 @@ func setup(t *testing.T) (*ZkStorage, *testutil) {
 
 	root := "/" + callerName
 
-	logger := smutil.NewZkTestLogger(t)
+	logger := smtestutil.NewZkTestLogger(t)
 	connOption := func(c *zk.Conn) {
 		c.SetLogger(logger)
 	}
@@ -91,7 +92,7 @@ func setup(t *testing.T) (*ZkStorage, *testutil) {
 		}
 	}()
 
-	s, err := NewZkStorage(conn, root, smutil.NewSmTestLogger(t))
+	s, err := NewZkStorage(conn, root, smtestutil.NewSmTestLogger(t))
 	if err != nil {
 		t.Fatal(err)
 	}

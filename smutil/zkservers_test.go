@@ -1,8 +1,10 @@
-package smutil
+package smutil_test
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/fullstorydev/gosolr/smutil"
 )
 
 func TestParseZkServersFlag(t *testing.T) {
@@ -18,7 +20,7 @@ func TestParseZkServersFlag(t *testing.T) {
 	}
 
 	for i, tc := range tcs {
-		zkHosts, solrZkPath, err := ParseZkServersFlag(tc.input)
+		zkHosts, solrZkPath, err := smutil.ParseZkServersFlag(tc.input)
 		if tc.expectError {
 			if err == nil {
 				t.Errorf("case %d: Expected error, got none", i)

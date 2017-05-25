@@ -14,7 +14,7 @@
 
 // +build integration
 
-package smutil
+package smutil_test
 
 import (
 	"fmt"
@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fullstorydev/gosolr/smtestutil"
+	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -32,11 +34,11 @@ type testutil struct {
 	t      *testing.T
 	root   string
 	conn   *zk.Conn
-	logger *ZkTestLogger
+	logger *smtestutil.ZkTestLogger
 }
 
 func (tu *testutil) teardown() {
-	if err := DeleteRecursive(tu.conn, tu.root); err != nil {
+	if err := smutil.DeleteRecursive(tu.conn, tu.root); err != nil {
 		tu.t.Error(err)
 	}
 	tu.conn.Close()
@@ -69,13 +71,13 @@ func setup(t *testing.T) *testutil {
 	splits := strings.Split(callerFunc.Name(), "/")
 	callerName := splits[len(splits)-1]
 	callerName = strings.Replace(callerName, ".", "_", -1)
-	if !strings.HasPrefix(callerName, "smutil_Test") {
-		t.Fatalf("Unexpected callerName: %s should start with smservice_Test", callerName)
+	if !strings.HasPrefix(callerName, "smutil_test_Test") {
+		t.Fatalf("Unexpected callerName: %s should start with smutil_test_Test", callerName)
 	}
 
 	root := "/" + callerName
 
-	logger := NewZkTestLogger(t)
+	logger := smtestutil.NewZkTestLogger(t)
 	connOption := func(c *zk.Conn) {
 		c.SetLogger(logger)
 	}
@@ -117,7 +119,7 @@ func TestAcquireAndMonitorZkMutexSerial(t *testing.T) {
 		tu := setup(t)
 		defer tu.teardown()
 
-		close, err := AcquireAndMonitorZkMutex(NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
+		close, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,7 +152,7 @@ func TestAcquireAndMonitorZkMutexParallel(t *testing.T) {
 		go func(tu *testutil) {
 			defer wg.Done()
 
-			close, err := AcquireAndMonitorZkMutex(NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
+			close, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -183,7 +185,7 @@ func TestAcquireAndMonitorZkMutexLost(t *testing.T) {
 	tu := setup(t)
 	defer tu.teardown()
 
-	close, err := AcquireAndMonitorZkMutex(NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
+	close, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
 	if err != nil {
 		t.Fatal(err)
 	}

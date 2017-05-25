@@ -12,21 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package smutil
+package smtestutil
 
 import (
 	"fmt"
 	"testing"
+
+	"github.com/fullstorydev/gosolr/smutil"
 )
 
 type smLogger struct {
 	logger TestLogger
 }
 
-var _ Logger = &smLogger{}
+var _ smutil.Logger = &smLogger{}
 
 // Adapts TestLogger to the ZK logging interface.
-func NewSmTestLogger(t *testing.T) Logger {
+func NewSmTestLogger(t *testing.T) smutil.Logger {
 	return &smLogger{logger: AdaptTestLogger(t)}
 }
 
