@@ -171,11 +171,7 @@ func inactiveShardExists(coll *solrmonitor.CollectionState, target string) bool 
 }
 
 func isNoSuchShardError(err error, collName, shardName string) *ErrorRsp {
-	if chErr, ok := err.(smutil.ChainedError); ok {
-		err = chErr.Root()
-	}
-
-	if err, ok := err.(*ErrorRsp); ok {
+	if err, ok := smutil.Root(err).(*ErrorRsp); ok {
 		s := fmt.Sprintf("No shard with name %s exists for collection %s", shardName, collName)
 		if err.Code == http.StatusBadRequest && strings.Contains(err.Msg, s) {
 			return err

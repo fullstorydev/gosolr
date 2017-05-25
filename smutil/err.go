@@ -16,6 +16,8 @@ package smutil
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"runtime"
 )
 
@@ -32,29 +34,15 @@ type chainedError struct {
 	msg   string
 }
 
-type ChainedError interface {
+type CausalError interface {
 	error
 	Cause() error
-	Root() error
 }
 
-var _ ChainedError = &chainedError{}
+var _ CausalError = &chainedError{}
 
 // Returns the cause of this error, which may be nil
 func (err *chainedError) Cause() error {
-	return err.cause
-}
-
-// Returns the cause of this error, which may be nil
-func (err *chainedError) Root() error {
-	if err.cause == nil {
-		return err
-	}
-
-	if causeIsChain, ok := err.cause.(ChainedError); ok {
-		return causeIsChain.Root()
-	}
-
 	return err.cause
 }
 
@@ -86,15 +74,15 @@ func newChainedError(cause error, file string, line int, msg string) *chainedErr
 	}
 }
 
-func Cherrf(cause error, format string, a ...interface{}) ChainedError {
+func Cherrf(cause error, format string, a ...interface{}) CausalError {
 	return Reachf(2, cause, format, a...)
 }
 
-func Errorf(format string, a ...interface{}) ChainedError {
+func Errorf(format string, a ...interface{}) CausalError {
 	return Reachf(2, nil, format, a...)
 }
 
-func Reachf(calldepth int, cause error, format string, a ...interface{}) ChainedError {
+func Reachf(calldepth int, cause error, format string, a ...interface{}) CausalError {
 	s := fmt.Sprintf(format, a...)
 	file, line := fileAndLine(calldepth)
 	return newChainedError(cause, file, line, s)
@@ -107,4 +95,36 @@ func fileAndLine(calldepth int) (string, int) {
 		line = 0
 	}
 	return file, line
+}
+
+// Root returns the "root" of an error.  Specifically, if err is a CausalError, Root recusively returns the root cause
+// (i.e. the first error in the chain).  Else, if err is a *url.Error or *net.OpError, Root is called recursively on
+// the error's Err field.  Otherwise, Root just returns err.
+func Root(err error) error {
+	if err == nil {
+		return err
+	}
+
+	// support for a few special built-in error types
+	switch v := err.(type) {
+	case *url.Error:
+		if v.Err != nil {
+			return Root(v.Err)
+		}
+		return v
+
+	case *net.OpError:
+		if v.Err != nil {
+			return Root(v.Err)
+		}
+		return v
+	}
+
+	if ce, ok := err.(CausalError); ok {
+		if cause := ce.Cause(); cause != nil {
+			return Root(cause)
+		}
+	}
+
+	return err
 }
