@@ -131,15 +131,16 @@ func (s *ZkStorage) GetInProgressOps() ([]solrmanapi.OpRecord, error) {
 }
 
 func (s *ZkStorage) AddCompletedOp(op solrmanapi.OpRecord) error {
-	path := s.completedPath() + "/" + "completed-"
+	seqPath := s.completedPath() + "/" + "completed-"
 	data := []byte(jsonString(&op))
-	_, err := s.conn.Create(path, data, zk.FlagSequence, zk.WorldACL(zk.PermAll))
+	_, err := s.conn.Create(seqPath, data, zk.FlagSequence, zk.WorldACL(zk.PermAll))
 	if err != nil {
-		return smutil.Cherrf(err, "could not create create completed op at %s in ZK", path)
+		return smutil.Cherrf(err, "could not create create completed op at %s in ZK", seqPath)
 	}
 
 	// If there are too many completed ops, delete the eldest.
-	ok, stat, err := s.conn.Exists(s.completedPath())
+	path := s.completedPath()
+	ok, stat, err := s.conn.Exists(path)
 	if err != nil || !ok {
 		s.logger.Warningf("could not stat %s in ZK: %s", path, err)
 		return nil
@@ -147,22 +148,22 @@ func (s *ZkStorage) AddCompletedOp(op solrmanapi.OpRecord) error {
 
 	if stat.NumChildren > NumStoredCompletedOps {
 		children, _, err := s.conn.Children(path)
-		if err == zk.ErrNoNode {
-			return nil
-		}
 		if err != nil {
 			s.logger.Warningf("could not get children at %s in ZK: %s", path, err)
 			return nil
 		}
 
 		// Since these nodes are all sequential, just delete the first N.
+		sort.Strings(children)
 		if len(children) > NumStoredCompletedOps {
-			children = children[:NumStoredCompletedOps]
-			for _, child := range children {
+			toDelete := children[:len(children)-NumStoredCompletedOps]
+			for _, child := range toDelete {
 				childPath := path + "/" + child
 				err := s.conn.Delete(childPath, -1)
 				if err != nil && err != zk.ErrNoNode {
 					s.logger.Warningf("could not delete old completed op at %s in ZK: %s", childPath, err)
+				} else {
+					s.logger.Debugf("deleted %s from ZK", childPath)
 				}
 			}
 		}

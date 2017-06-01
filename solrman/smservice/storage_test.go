@@ -15,8 +15,11 @@
 package smservice
 
 import (
-	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
+	"sort"
+	"strconv"
 	"testing"
+
+	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 )
 
 func testStorage_InProgressOps(t *testing.T, s SolrManStorage) {
@@ -109,4 +112,16 @@ func testStorage_CompletedOps(t *testing.T, s SolrManStorage) {
 	assertOps(2, "SolrOp:baz:3", "SolrOp:bar:2")
 	assertOps(1, "SolrOp:baz:3")
 	assertOps(0)
+
+	// Now add a bunch and make sure only NumStoredCompletedOps come back.
+	bigNum := NumStoredCompletedOps * 2
+	var expectOps []string
+	for i := 0; i < bigNum; i++ {
+		op := solrmanapi.OpRecord{Collection: "max", Shard: strconv.Itoa(i), FinishedMs: int64(i)}
+		s.AddCompletedOp(op)
+		expectOps = append(expectOps, op.Key())
+	}
+	expectOps = expectOps[len(expectOps)-NumStoredCompletedOps:]
+	sort.Sort(sort.Reverse(sort.StringSlice(expectOps))) // should come back in reverse order
+	assertOps(bigNum, expectOps...)
 }
