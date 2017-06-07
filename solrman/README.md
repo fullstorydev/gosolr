@@ -20,7 +20,6 @@ usage across all the nodes in a solr cluster.
   Currenly you must change the code to tune these for your needs.
 - Does NOT support solr collection state format v1.  See note below.
 - Automatic shard splitting is likely to cause problems prior to Solr 6.1, see note below.
-- Requires an external redis server to store solrman's state.  TODO: use solr's zookeeper for this purpose.
 
 ## Supported versions
 
