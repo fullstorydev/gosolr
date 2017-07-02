@@ -62,15 +62,16 @@ func (s *SolrManService) RunSolrMan() {
 			continue
 		}
 
-		evacuatingNodes, err := s.Storage.GetEvacuateNodeList()
-		if err != nil {
-			s.Logger.Errorf("failed to determine hosts to evacuate: %s", err)
-			continue
-		}
-
 		if s.Storage.IsDisabled() {
 			s.setStatusOp("solrman is disabled")
 			s.Logger.Infof("solrman is disabled")
+			continue
+		}
+
+		evacuatingNodes, err := s.Storage.GetEvacuateNodeList()
+		if err != nil {
+			s.setStatusOp("failed to determine hosts to evacuate")
+			s.Logger.Errorf("failed to determine hosts to evacuate: %s", err)
 			continue
 		}
 
@@ -98,9 +99,12 @@ func (s *SolrManService) RunSolrMan() {
 				s.AlertLog.Errorf("cluster state became not golden; see logs for details")
 				clusterStateGolden = false
 			}
+			s.setStatusOp("cluster state is not golden; waiting for cluster state to become golden")
 			s.Logger.Warningf("cluster state is not golden, skipping; see logs for details")
 			continue
 		}
+
+		s.clearStatusOp()
 
 		if !clusterStateGolden {
 			s.AlertLog.Infof("cluster state became golden; resuming operation")
