@@ -24,7 +24,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -71,7 +70,6 @@ func run(logger *log.Logger) error {
 
 	logger.Printf("Starting solrman with zkHosts=%v solrZkPath=%s solrmanZkPath=%s", zkHosts, solrZkPath, solrmanZkPath)
 
-	zkLogger := &zookeeperLogger{logger: logger}
 	smLogger := &solrmanLogger{logger: logger}
 	smAudit := &solrmanAudit{logger: logger}
 
@@ -79,13 +77,13 @@ func run(logger *log.Logger) error {
 	// which manifests as errors of the form "cannot assign requested address"
 	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = MaxIdleConnsPerHost
 
-	zooClient, err := NewZkConn(zkLogger, strings.Split(*zkServers, ","))
+	zooClient, err := NewZkConn(logger, zkHosts)
 	if err != nil {
 		return smutil.Cherrf(err, "Failed to connect to zookeeper")
 	}
 	defer zooClient.Close()
 
-	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zooClient, zkLogger, solrZkPath)
+	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zooClient, &solrmonitorLogger{logger: logger}, solrZkPath)
 	if err != nil {
 		return smutil.Cherrf(err, "Failed to create solrMonitor")
 	}
@@ -299,9 +297,9 @@ func (a *solrmanAudit) recordOp(opState string, op *solrmanapi.OpRecord, collSta
 	}
 }
 
-func NewZkConn(logger zk.Logger, servers []string) (*zk.Conn, error) {
+func NewZkConn(logger *log.Logger, servers []string) (*zk.Conn, error) {
 	conn, events, err := zk.Connect(servers, 10*time.Second, func(conn *zk.Conn) {
-		conn.SetLogger(logger)
+		conn.SetLogger(&zookeeperLogger{logger: logger})
 	})
 	if err != nil {
 		return nil, err
@@ -340,4 +338,14 @@ var _ zk.Logger = &zookeeperLogger{}
 
 func (l *zookeeperLogger) Printf(format string, args ...interface{}) {
 	l.logger.Printf("zk: "+format, args...)
+}
+
+type solrmonitorLogger struct {
+	logger *log.Logger
+}
+
+var _ zk.Logger = &solrmonitorLogger{}
+
+func (l *solrmonitorLogger) Printf(format string, args ...interface{}) {
+	l.logger.Printf("solrmonitor: "+format, args...)
 }
