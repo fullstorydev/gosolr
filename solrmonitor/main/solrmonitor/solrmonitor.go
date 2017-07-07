@@ -18,9 +18,13 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
+	"runtime"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -31,6 +35,7 @@ import (
 
 var (
 	zkServers = flag.String("zkServers", "127.0.0.1:2181/solr", `comma separated list of the zk servers solr is using; ip:port or hostname:port, followed by /solr`)
+	flakyFlag = flag.Bool("flaky", false, "emulate flaky ZK connection to test core logic")
 )
 
 func main() {
@@ -48,6 +53,8 @@ func run(logger *log.Logger) error {
 		panic("This program does not take arguments.")
 	}
 
+	installStackTraceDumper()
+
 	zkHosts, solrZkPath, err := smutil.ParseZkServersFlag(*zkServers)
 	if err != nil {
 		return smutil.Cherrf(err, "error parsing -zkServers flag %s", *zkServers)
@@ -61,21 +68,54 @@ func run(logger *log.Logger) error {
 	}
 	defer zooClient.Close()
 
-	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zooClient, &solrmonitorLogger{logger: logger}, solrZkPath)
+	zkCli := solrmonitor.ZkCli(zooClient)
+
+	var flakyZk *sexPantherZkCli
+	if *flakyFlag {
+		flakyZk = &sexPantherZkCli{
+			delegate: zooClient,
+			rnd:      rand.New(rand.NewSource(0)),
+			flaky:    0, // during startup
+		}
+		zkCli = flakyZk
+	}
+
+	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zkCli, &solrmonitorLogger{logger: logger}, solrZkPath)
 	if err != nil {
 		return smutil.Cherrf(err, "Failed to create solrMonitor")
 	}
 	defer solrMonitor.Close()
 
-	logger.Println("Waiting for interrupt...")
+	if *flakyFlag {
+		// Now that we're up and running, make it flaky
+		flakyZk.setFlaky(true)
+	}
 
+	logger.Println("Waiting for interrupt...")
+	awaitSignal()
+
+	logger.Println("exiting...")
+	return nil
+}
+
+func installStackTraceDumper() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGQUIT)
+
+	buf := make([]byte, 10*1024*1024) // reserve 10mb
+	go func() {
+		for range sigChan {
+			stacklen := runtime.Stack(buf, true)
+			fmt.Fprintf(os.Stderr, "=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end\n", buf[:stacklen])
+		}
+	}()
+}
+
+func awaitSignal() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	<-c
 	signal.Reset(syscall.SIGINT, syscall.SIGTERM)
-
-	logger.Println("exiting...")
-	return nil
 }
 
 func NewZkConn(logger *log.Logger, servers []string) (*zk.Conn, error) {
@@ -129,4 +169,61 @@ var _ zk.Logger = &solrmonitorLogger{}
 
 func (l *solrmonitorLogger) Printf(format string, args ...interface{}) {
 	l.logger.Printf("solrmonitor: "+format, args...)
+}
+
+// TODO: make an integration test using this idea.
+
+// 60% of the time, it works every time
+const flakeChance = 0.60
+
+type sexPantherZkCli struct {
+	delegate solrmonitor.ZkCli
+	rnd      *rand.Rand
+	flaky    int32
+}
+
+var _ solrmonitor.ZkCli = &sexPantherZkCli{}
+
+func (s *sexPantherZkCli) setFlaky(flaky bool) {
+	if flaky {
+		atomic.StoreInt32(&s.flaky, 1)
+	} else {
+		atomic.StoreInt32(&s.flaky, 0)
+	}
+}
+
+func (s *sexPantherZkCli) isFlaky() bool {
+	return atomic.LoadInt32(&s.flaky) != 0
+}
+
+func (s *sexPantherZkCli) ChildrenW(path string) ([]string, *zk.Stat, <-chan zk.Event, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return nil, nil, nil, errors.New("flaky error")
+	}
+	return s.delegate.ChildrenW(path)
+}
+
+func (s *sexPantherZkCli) Get(path string) ([]byte, *zk.Stat, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return nil, nil, errors.New("flaky error")
+	}
+	return s.delegate.Get(path)
+}
+
+func (s *sexPantherZkCli) GetW(path string) ([]byte, *zk.Stat, <-chan zk.Event, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return nil, nil, nil, errors.New("flaky error")
+	}
+	return s.delegate.GetW(path)
+}
+
+func (s *sexPantherZkCli) ExistsW(path string) (bool, *zk.Stat, <-chan zk.Event, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return false, nil, nil, errors.New("flaky error")
+	}
+	return s.delegate.ExistsW(path)
+}
+
+func (s *sexPantherZkCli) State() zk.State {
+	return s.delegate.State()
 }
