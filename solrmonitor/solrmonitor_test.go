@@ -122,7 +122,7 @@ func TestCleanCloseZk(t *testing.T) {
 	conn := testutil.conn
 	testutil.conn = cleanupConn
 
-	getRunningProcs := func() int32 { return atomic.LoadInt32(&sm.dispatcher.runningProcs) }
+	getRunningProcs := func() int32 { return atomic.LoadInt32(&sm.zkWatcher.dispatcher.runningProcs) }
 	shouldBecomeEq(t, 1, getRunningProcs)
 	conn.Close()
 	shouldBecomeEq(t, 0, getRunningProcs)
@@ -133,7 +133,7 @@ func TestCleanCloseSolrMonitor(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
 
-	getRunningProcs := func() int32 { return atomic.LoadInt32(&sm.dispatcher.runningProcs) }
+	getRunningProcs := func() int32 { return atomic.LoadInt32(&sm.zkWatcher.dispatcher.runningProcs) }
 	shouldBecomeEq(t, 1, getRunningProcs)
 	sm.Close()
 	testutil.sm = nil // prevent double close

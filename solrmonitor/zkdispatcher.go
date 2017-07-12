@@ -41,6 +41,12 @@ func (h *ZkEventHandler) Handle(event zk.Event) <-chan zk.Event {
 	return (*h)(event)
 }
 
+// zkDispatchTask is a queued task
+type zkDispatchTask struct {
+	callback ZkEventCallback
+	event    zk.Event
+}
+
 // Monitors many zk.Event channels. Dispatches handling to other goroutines allowing handlers to
 // run in parallel. A single ZkEventCallback, however, will always be invoked as if from the
 // same goroutine. So a single callback can be used to watch multiple channels and it will receive
@@ -213,7 +219,7 @@ func (d *ZkDispatcher) dequeueTask(cb ZkEventCallback) (zkDispatchTask, bool) {
 		delete(d.tasks, cb)
 		return zkDispatchTask{}, false
 	}
-	return ret, ok
+	return ret.(zkDispatchTask), ok
 }
 
 func newCase(watcher <-chan zk.Event) reflect.SelectCase {

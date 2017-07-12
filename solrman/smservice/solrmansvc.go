@@ -151,7 +151,7 @@ func (s *SolrManService) getNodeStatus(solrNode string, cluster solrmonitor.Clus
 						Collection:   collName,
 						Shard:        shardName,
 						ShardState:   shard.State,
-						Range:        collState.Shards[shardName].Range,
+						Range:        shard.Range,
 						Replica:      replicaName,
 						ReplicaState: replica.State,
 						IsLeader:     replica.IsLeader(),

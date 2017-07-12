@@ -14,10 +14,10 @@ func TestFifoSimple(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		task := g.newTask()
 		q.add(task)
-		if peeked, ok := q.peek(); !ok || !equals(peeked, task) {
+		if peeked, ok := q.peek(); !ok || !equals(peeked.(zkDispatchTask), task) {
 			t.Error("Failed to peek task that was just added")
 		}
-		if polled, ok := q.poll(); !ok || !equals(polled, task) {
+		if polled, ok := q.poll(); !ok || !equals(polled.(zkDispatchTask), task) {
 			t.Error("Failed to poll task that was just added")
 		}
 
@@ -65,7 +65,7 @@ func TestFifoRingBufferMaintenance(t *testing.T) {
 
 	// ensure that we don't leak any references in underlying slice after removing from queue
 	for idx, task := range q.slice {
-		if !isEmpty(task) {
+		if task != nil {
 			t.Errorf("Entry in queue at index %d was not cleared: %v", idx, task)
 		}
 	}
@@ -76,20 +76,15 @@ func equals(task1, task2 zkDispatchTask) bool {
 	return task1.event == task2.event
 }
 
-func isEmpty(task zkDispatchTask) bool {
-	var empty zkDispatchTask
-	return equals(empty, task)
-}
-
 func checkRemove(q *fifoTaskQueue, t *testing.T, removeCount *int) {
 	task, ok := q.poll()
 	if !ok {
 		t.Fatalf("Polling from queue failed even though size = %d", q.size)
 	}
 	(*removeCount)++
-	if int(task.event.Type) != *removeCount {
+	if int(task.(zkDispatchTask).event.Type) != *removeCount {
 		t.Fatalf("Expecting to have polled %d; instead polled %d",
-			*removeCount, int(task.event.Type))
+			*removeCount, int(task.(zkDispatchTask).event.Type))
 	}
 }
 

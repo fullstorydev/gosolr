@@ -32,7 +32,7 @@ type SolrMonitor struct {
 	collections map[string]*collection // map of all currently-known collections
 	liveNodes   []string               // current set of live_nodes
 
-	dispatcher *ZkDispatcher
+	zkWatcher *zkWatcherMan
 }
 
 // Minimal interface solrmonitor needs (allows for mock ZK implementations).
@@ -58,7 +58,7 @@ func NewSolrMonitorWithRoot(zkCli ZkCli, logger zk.Logger, solrRoot string) (*So
 		zkCli:       zkCli,
 		solrRoot:    solrRoot,
 		collections: make(map[string]*collection),
-		dispatcher:  NewZkDispatcher(logger),
+		zkWatcher:   NewZkWatcherMan(logger, zkCli),
 	}
 	err := c.start()
 	if err != nil {
@@ -68,7 +68,7 @@ func NewSolrMonitorWithRoot(zkCli ZkCli, logger zk.Logger, solrRoot string) (*So
 }
 
 func (c *SolrMonitor) Close() {
-	c.dispatcher.Close()
+	c.zkWatcher.Close()
 }
 
 func (c *SolrMonitor) GetCurrentState() (ClusterState, error) {
@@ -132,49 +132,31 @@ func (c *SolrMonitor) start() error {
 	}
 
 	collectionsPath := c.solrRoot + "/collections"
-	collections, collectionsWatch, err := getChildrenAndWatch(c.zkCli, collectionsPath)
+	isInit := true
+	err = c.zkWatcher.monitorChildren(true, collectionsPath, func(children []string) bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.updateCollections(children, isInit)
+		return true
+	})
 	if err != nil {
 		c.logger.Printf("%s: error getting children: %s", collectionsPath, err)
 		return err
 	}
-	c.updateCollections(collections, true)
-	c.monitorChildren(collectionsPath, collectionsWatch, func(children []string) {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.updateCollections(children, false)
-	})
+	isInit = false
 
 	liveNodesPath := c.solrRoot + "/live_nodes"
-	liveNodes, liveNodesWatch, err := getChildrenAndWatch(c.zkCli, liveNodesPath)
+	c.zkWatcher.monitorChildren(true, liveNodesPath, func(children []string) bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.updateLiveNodes(children)
+		return true
+	})
 	if err != nil {
 		c.logger.Printf("%s: error getting children: %s", liveNodesPath, err)
 		return err
 	}
-	c.updateLiveNodes(liveNodes)
-	c.monitorChildren(liveNodesPath, liveNodesWatch, func(children []string) {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.updateLiveNodes(children)
-	})
-
 	return nil
-}
-
-func (c *SolrMonitor) monitorChildren(path string, watcher <-chan zk.Event, onchange func(children []string)) {
-	f := func(evt zk.Event) <-chan zk.Event {
-		c.logger.Printf("solrmonitor children %s: %s", path, evt)
-		children, newWatcher, err := getChildrenAndWatch(c.zkCli, path)
-		if err != nil {
-			if err != zk.ErrClosing {
-				c.logger.Printf("solrmonitor %s: error getting children: %s", path, err)
-			}
-			// TODO(scottb): retry timeout logic
-			return nil
-		}
-		onchange(children)
-		return newWatcher
-	}
-	c.dispatcher.Watch(watcher, f)
 }
 
 // Update the set of active collections; must hold the lock except during init().
@@ -199,7 +181,7 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				coll.start()
+				coll.start(isInit)
 			}()
 			c.collections[name] = coll
 		}
@@ -287,19 +269,14 @@ func parseStateData(name string, data []byte, version int32) *parsedCollectionSt
 	return &parsedCollectionState{collectionState: collState}
 }
 
-func (coll *collection) start() {
-	coll.mu.Lock()
-	defer coll.mu.Unlock()
-	logger := coll.parent.logger
-	zkCli := coll.parent.zkCli
+func (coll *collection) start(isInit bool) {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-	data, version, collWatch, err := getDataAndWatch(zkCli, path)
-	if err != nil {
-		logger.Printf("collection %s: error getting data: %s", coll.name, err)
-		return
-	}
-	coll.setData(data, version)
-	coll.monitorData(path, collWatch)
+	coll.parent.zkWatcher.monitorData(isInit, path, func(data string, version int32) bool {
+		coll.mu.Lock()
+		defer coll.mu.Unlock()
+		coll.setData(data, version)
+		return !coll.isClosed
+	})
 }
 
 func (coll *collection) close() {
@@ -314,31 +291,6 @@ func (coll *collection) IsClosed() bool {
 	return coll.isClosed
 }
 
-func (coll *collection) monitorData(path string, watcher <-chan zk.Event) {
-	f := func(evt zk.Event) <-chan zk.Event {
-		if coll.IsClosed() {
-			return nil
-		}
-
-		logger := coll.parent.logger
-		zkCli := coll.parent.zkCli
-		logger.Printf("solrmonitor data %s: %s", path, evt)
-		data, version, newWatcher, err := getDataAndWatch(zkCli, path)
-		if err != nil {
-			if err != zk.ErrClosing {
-				logger.Printf("solrmonitor %s: error getting data: %s", path, err)
-			}
-			// TODO(scottb): retry timeout logic
-			return nil
-		}
-		coll.mu.Lock()
-		defer coll.mu.Unlock()
-		coll.setData(data, version)
-		return newWatcher
-	}
-	coll.parent.dispatcher.Watch(watcher, f)
-}
-
 func (coll *collection) setData(data string, version int32) {
 	if data == "" {
 		coll.parent.logger.Printf("%s: no data", coll.name)
@@ -346,57 +298,4 @@ func (coll *collection) setData(data string, version int32) {
 	coll.stateData = data
 	coll.zkNodeVersion = version
 	coll.cachedState = nil
-}
-
-func getChildrenAndWatch(zkCli ZkCli, path string) ([]string, <-chan zk.Event, error) {
-	for {
-		children, _, childrenWatch, err := zkCli.ChildrenW(path)
-		if err == nil {
-			// Success, we're done.
-			return children, childrenWatch, nil
-		}
-
-		if err == zk.ErrNoNode {
-			// Node doesn't exist; add an existence watch.
-			exists, _, existsWatch, err := zkCli.ExistsW(path)
-			if err != nil {
-				return nil, nil, err
-			}
-			if exists {
-				// Improbable, but possible; first we checked and it wasn't there, then we checked and it was.
-				// Just loop and try again.
-				continue
-			}
-			// Node still doesn't exist, return empty list and exists watch
-			return nil, existsWatch, err
-		}
-
-		return nil, nil, err
-	}
-}
-
-func getDataAndWatch(zkCli ZkCli, path string) (string, int32, <-chan zk.Event, error) {
-	for {
-		data, stat, dataWatch, err := zkCli.GetW(path)
-		if err == nil {
-			// Success, we're done.
-			return string(data), stat.Version, dataWatch, nil
-		}
-
-		if err == zk.ErrNoNode {
-			// Node doesn't exist; add an existence watch.
-			exists, _, existsWatch, err := zkCli.ExistsW(path)
-			if err != nil {
-				return "", -1, nil, err
-			}
-			if exists {
-				// Improbable, but possible; first we checked and it wasn't there, then we checked and it was.
-				// Just loop and try again.
-				continue
-			}
-			return "", -1, existsWatch, nil
-		}
-
-		return "", -1, nil, err
-	}
 }
