@@ -112,7 +112,6 @@ func (d *ZkDispatcher) WatchEvent(watcher <-chan zk.Event, handler ZkEventCallba
 		// Escape hatch to avoid deadlock
 		panic("channel is full")
 	}
-	return nil
 }
 
 // Watch a new ZK event using the given function to handle the event.

@@ -27,12 +27,12 @@ import (
 func (s *SolrManService) runMoveOperation(move solrmanapi.OpRecord) {
 	err := s.doRunMoveOperation(move)
 	if err != nil {
-		move.Error = fmt.Sprintf("failed MoveShard request: %s with err: %s", move, err)
+		move.Error = fmt.Sprintf("failed MoveShard request: %s with err: %s", move.String(), err)
 		move.FinishedMs = nowMillis()
-		s.Logger.Errorf("failed MoveShard request: %+v with err: %s", move, err)
+		s.Logger.Errorf("failed MoveShard request: %s with err: %s", move.String(), err)
 	} else {
 		move.FinishedMs = nowMillis()
-		s.Logger.Infof("completed MoveShard request: %s", move)
+		s.Logger.Infof("completed MoveShard request: %s", move.String())
 	}
 
 	func() {
@@ -76,7 +76,7 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 		for retry := 0; retry < 3; retry++ {
 			var err error
 			if newCollState, err = s.SolrMonitor.GetCollectionState(move.Collection); err != nil {
-				s.Logger.Errorf("failed to retrieve collection state after op %s: %s", move, err)
+				s.Logger.Errorf("failed to retrieve collection state after op %s: %s", move.String(), err)
 				return
 			} else {
 				if newCollState.ZkNodeVersion > lastZkVersion {
@@ -101,7 +101,7 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 		if err := s.solrClient.AddReplica(move.Collection, move.Shard, move.DstNode, ""); err != nil {
 			return smutil.Cherrf(err, "failed to issue ADDREPLICA command")
 		}
-		s.Logger.Debugf("ADDREPLICA command issued successfully MoveShard request: %s", move)
+		s.Logger.Debugf("ADDREPLICA command issued successfully MoveShard request: %s", move.String())
 	}
 
 	// Wait on the replica to sync up and be "live"
@@ -136,7 +136,7 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 	if err := s.solrClient.DeleteReplica(move.Collection, move.Shard, original, ""); err != nil {
 		return smutil.Cherrf(err, "failed to issue DELETEREPLICA command")
 	}
-	s.Logger.Debugf("DELETEREPLICA command issued successfully MoveShard request: %s", move)
+	s.Logger.Debugf("DELETEREPLICA command issued successfully MoveShard request: %s", move.String())
 	success = true
 	return nil
 }

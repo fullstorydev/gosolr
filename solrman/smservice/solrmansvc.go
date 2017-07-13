@@ -303,7 +303,7 @@ func (s *SolrManService) MoveShard(params *solrmanapi.MoveShardRequest) (*solrma
 			// identical move in progress, just report success
 		} else {
 			// conflicting operation in progress
-			rsp.Error = fmt.Sprintf("That shard is busy: %s", inProgressOp)
+			rsp.Error = fmt.Sprintf("That shard is busy: %s", inProgressOp.String())
 		}
 	} else {
 		// Run the operation
@@ -354,7 +354,7 @@ func (s *SolrManService) SplitShard(params *solrmanapi.SplitShardRequest) (*solr
 			// identical split in progress, just report success
 		} else {
 			// conflicting operation in progress
-			rsp.Error = fmt.Sprintf("That shard is busy: %s", inProgressOp)
+			rsp.Error = fmt.Sprintf("That shard is busy: %s", inProgressOp.String())
 		}
 	} else {
 		// Run the operation

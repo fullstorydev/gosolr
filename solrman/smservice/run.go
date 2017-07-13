@@ -304,8 +304,8 @@ func computeShardSplits(s *SolrManService, clusterState solrmanapi.SolrCloudStat
 			if status.NumDocs > splitShardsWithDocCount {
 				x := &SplitShardRequestWithSize{
 					solrmanapi.SplitShardRequest{
-						status.Collection,
-						status.Shard,
+						Collection: status.Collection,
+						Shard:      status.Shard,
 					},
 					status.NumDocs,
 				}

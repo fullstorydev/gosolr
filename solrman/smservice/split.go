@@ -29,12 +29,12 @@ import (
 func (s *SolrManService) runSplitOperation(split solrmanapi.OpRecord) {
 	err := s.doRunSplitOperation(split)
 	if err != nil {
-		split.Error = fmt.Sprintf("failed SplitShard request: %s with err: %s", split, err)
+		split.Error = fmt.Sprintf("failed SplitShard request: %s with err: %s", split.String(), err)
 		split.FinishedMs = nowMillis()
-		s.Logger.Errorf("failed SplitShard request: %+v with err: %s", split, err)
+		s.Logger.Errorf("failed SplitShard request: %s with err: %s", split.String(), err)
 	} else {
 		split.FinishedMs = nowMillis()
-		s.Logger.Infof("completed SplitShard request: %s", split)
+		s.Logger.Infof("completed SplitShard request: %s", split.String())
 	}
 
 	func() {
@@ -77,7 +77,7 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 		for retry := 0; retry < 3; retry++ {
 			var err error
 			if newCollState, err = s.SolrMonitor.GetCollectionState(split.Collection); err != nil {
-				s.Logger.Errorf("failed to retrieve collection state after op %s: %s", split, err)
+				s.Logger.Errorf("failed to retrieve collection state after op %s: %s", split.String(), err)
 				return
 			} else {
 				if newCollState.ZkNodeVersion > lastZkVersion {
