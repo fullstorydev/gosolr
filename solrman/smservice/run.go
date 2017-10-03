@@ -33,9 +33,10 @@ const (
 	iterationSleep                = 1 * time.Minute  // How long to sleep each attempt, no matter what
 	quiescenceSleep               = 10 * time.Minute // How long to sleep when stability is reached
 	splitsPerMachine              = 4                // How many shard splitting jobs to schedule on 1 physical machine at a time
-	splitShardsWithDocCount       = 5000000          // Split shards with doc count > this
-	allSplitsDocCountTrigger      = 5005000          // But don't do any splits until at least one shard > this
+	splitShardsWithDocCount       = 4000000          // Split shards with doc count > this
+	allSplitsDocCountTrigger      = 4004000          // But don't do any splits until at least one shard > this
 	allowedMinToMaxShardSizeRatio = 0.2              // Ratio of smallest shard to biggest shard < this then warn about imbalance
+	maxShardsPerMachine           = 16               // Maximum number of shards per machine in the cluster
 )
 
 // Runs the main solr management loop, never returns.
@@ -290,10 +291,10 @@ func computeShardSplits(s *SolrManService, clusterState solrmanapi.SolrCloudStat
 	anyShardTooBig := false
 	for machine, v := range clusterState {
 		for _, status := range v.Cores {
-			// Continue if this collection has too many shards i.e greater tha 8 * #solr machines
+			// Continue if this collection has too many shards i.e greater than maxShardsPerMachine * num solr machines
 			if collstate, err := s.SolrMonitor.GetCollectionState(status.Collection); err != nil {
 				continue
-			} else if len(collstate.Shards) > 8*len(clusterState) {
+			} else if len(collstate.Shards) > maxShardsPerMachine*len(clusterState) {
 				continue
 			}
 
