@@ -161,7 +161,9 @@ func (c *SolrMonitor) start() error {
 
 // Update the set of active collections; must hold the lock except during init().
 func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
-	c.logger.Printf("solrmonitor collections: %s", collections)
+	var logAdded, logRemoved []string
+	logOldSize, logNewSize := len(c.collections), len(collections)
+
 	collectionExists := make(map[string]bool)
 
 	// First, add any collections that don't already exist
@@ -184,6 +186,7 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
 				coll.start(isInit)
 			}()
 			c.collections[name] = coll
+			logAdded = append(logAdded, name)
 		}
 	}
 
@@ -192,8 +195,18 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
 		if !collectionExists[name] {
 			coll.close()
 			delete(c.collections, name)
+			logRemoved = append(logRemoved, name)
 		}
 	}
+
+	if len(logAdded) > 10 {
+		logAdded = []string{fmt.Sprintf("(%d) suppressing list", len(logAdded))}
+	}
+	if len(logRemoved) > 10 {
+		logRemoved = []string{fmt.Sprintf("(%d) suppressing list", len(logRemoved))}
+	}
+
+	c.logger.Printf("solrmonitor (%d) -> (%d) collections; added=%s, removed=%s", logOldSize, logNewSize, logAdded, logRemoved)
 }
 
 func (c *SolrMonitor) updateLiveNodes(liveNodes []string) {
