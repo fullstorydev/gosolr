@@ -165,7 +165,7 @@ func (s *SolrManService) RunSolrMan() {
 				continue
 			}
 
-			// Double-check we're in a good state before queuing the moves.
+			// Computing moves takes a long time; double-check we're in a good state before starting the moves.
 			if s.ZooClient.State() != zk.StateHasSession {
 				s.setStatusOp("not connected to zk")
 				s.Logger.Warningf("not connected to zk")
@@ -175,6 +175,18 @@ func (s *SolrManService) RunSolrMan() {
 			if s.hasInProgressOps() {
 				s.clearStatusOp()
 				s.Logger.Debugf("in progress ops")
+				continue
+			}
+
+			if s.Storage.IsDisabled() {
+				s.setStatusOp("solrman is disabled")
+				s.Logger.Infof("solrman is disabled")
+				continue
+			}
+
+			if s.Storage.IsMovesDisabled() {
+				s.clearStatusOp()
+				s.Logger.Infof("solrman moves are disabled")
 				continue
 			}
 
