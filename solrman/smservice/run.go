@@ -32,17 +32,20 @@ const (
 	movesPerCycle                 = 10               // How many shards to move at a time
 	iterationSleep                = 1 * time.Minute  // How long to sleep each attempt, no matter what
 	quiescenceSleep               = 10 * time.Minute // How long to sleep when stability is reached
-	splitsPerMachine              = 4                // How many shard splitting jobs to schedule on 1 physical machine at a time
+	splitsPerMachine              = 2                // How many shard splitting jobs to schedule on 1 physical machine at a time
 	splitShardsWithDocCount       = 4000000          // Split shards with doc count > this
 	allSplitsDocCountTrigger      = 4004000          // But don't do any splits until at least one shard > this
 	allowedMinToMaxShardSizeRatio = 0.2              // Ratio of smallest shard to biggest shard < this then warn about imbalance
 	maxShardsPerMachine           = 16               // Maximum number of shards per machine in the cluster
+	disabledNoticePeriod          = time.Hour*6      // Duration between notices (to alert logger) that solrman is still disabled
 )
 
 // Runs the main solr management loop, never returns.
 func (s *SolrManService) RunSolrMan() {
 	s.setStatusOp("solrman is starting up")
 	clusterStateGolden := true // assume true to start
+
+	var nextDisabledNotice time.Time
 
 	first := true
 	for {
@@ -66,7 +69,15 @@ func (s *SolrManService) RunSolrMan() {
 		if s.Storage.IsDisabled() {
 			s.setStatusOp("solrman is disabled")
 			s.Logger.Infof("solrman is disabled")
+			if now := time.Now(); now.After(nextDisabledNotice) {
+				// alert periodically while solrman is disabled
+				s.AlertLog.Warningf("solrman is disabled")
+				nextDisabledNotice = now.Add(disabledNoticePeriod)
+			}
 			continue
+		} else {
+			// reset
+			nextDisabledNotice = time.Time{}
 		}
 
 		evacuatingNodes, err := s.Storage.GetEvacuateNodeList()
