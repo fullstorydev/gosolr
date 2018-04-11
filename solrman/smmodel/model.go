@@ -17,7 +17,8 @@ package smmodel
 import (
 	"encoding/json"
 	"fmt"
-	"sync/atomic"
+	"sort"
+	"sync"
 )
 
 const debug = 0 // 0 means no debug output; 3 is maximum debug output
@@ -30,6 +31,24 @@ type Model struct {
 	cores       []*Core
 
 	cost float64 // cached cost
+}
+
+func (m *Model) FindCore(coreName string) *Core {
+	for _, core := range m.cores {
+		if core.Name == coreName {
+			return core
+		}
+	}
+	return nil
+}
+
+func (m *Model) FindNode(nodeName string) *Node {
+	for _, node := range m.Nodes {
+		if node.Name == nodeName {
+			return node
+		}
+	}
+	return nil
 }
 
 func (m *Model) Add(core *Core) {
@@ -129,18 +148,14 @@ func (m *Model) WithMove(core *Core, toNode *Node) *Model {
 }
 
 type permutation struct {
-	cost  float64
-	model *Model
-	move  *Move
+	cost float64
+	move Move
 }
 
-func (m *Model) computeNextMoveShard(immobileCores map[string]bool, mustEvacuate bool, shard int, shardCount int, c chan *permutation, active *int32) {
+func (m *Model) computeNextMoveShard(mustEvacuate bool, shard int, shardCount int, chanPerm chan<- permutation) {
 	// Try moving every core to every other node, find the best score.
 	count := 0
 	for _, core := range m.cores {
-		if immobileCores[core.Name] {
-			continue
-		}
 		var fromNode *Node
 		for _, node := range m.Nodes {
 			if node.Contains(core) {
@@ -171,32 +186,23 @@ func (m *Model) computeNextMoveShard(immobileCores map[string]bool, mustEvacuate
 			count += 1
 			if count%shardCount == shard {
 				mPrime := m.WithMove(core, toNode)
-				move := &permutation{
-					cost:  mPrime.Cost(),
-					model: mPrime,
-					move:  &Move{Core: core, FromNode: fromNode, ToNode: toNode},
+				perm := permutation{
+					cost: mPrime.Cost(),
+					move: Move{Core: core, FromNode: fromNode, ToNode: toNode},
 				}
 				if debug >= 1 {
-					fmt.Printf("move cost: %f: %s\n", move.cost, move.move)
+					fmt.Printf("move cost: %f: %s\n", perm.cost, perm.move)
 				}
-				c <- move
+				chanPerm <- perm
 			}
 		}
 	}
-	if atomic.AddInt32(active, -1) == 0 {
-		// if we were the last active goroutine, close the channel
-		close(c)
-	}
 }
 
-func (m *Model) ComputeNextMove(numCPU int, immobileCores map[string]bool) (*Model, *Move) {
-	best := &permutation{
-		cost:  m.Cost(),
-		model: m,
-		move:  nil,
-	}
+func (m *Model) ComputeBestMoves(numCPU int, count int) []Move {
+	baseCost := m.Cost()
 	if debug >= 1 {
-		fmt.Printf("base model cost: %f\n", best.cost)
+		fmt.Printf("base model cost: %f\n", baseCost)
 	}
 
 	// check to see if our next move must be an evacuation
@@ -211,32 +217,65 @@ func (m *Model) ComputeNextMove(numCPU int, immobileCores map[string]bool) (*Mod
 		fmt.Printf("Move must remove core from evacuating node? %v\n", mustEvacuate)
 	}
 
-	// Try moving every core to every other node, find the best score.
-	c := make(chan *permutation)
-	activeRoutines := int32(numCPU)
+	// Try moving every core to every other node, compute scores.
+	chanPerm := make(chan permutation)
+	var wg sync.WaitGroup
 	for i := 0; i < numCPU; i += 1 {
-		go m.computeNextMoveShard(immobileCores, mustEvacuate, i, numCPU, c, &activeRoutines)
+		wg.Add(1)
+		go func(shard int) {
+			defer wg.Done()
+			m.computeNextMoveShard(mustEvacuate, shard, numCPU, chanPerm)
+		}(i)
 	}
 
-	for {
-		move := <-c
-		if move == nil {
-			break
-		}
-		if move.cost < best.cost {
-			best = move
-		}
-		if best.move == nil && move.move.FromNode.Evacuating {
-			// we want to make sure that the "no op" option cannot prevail against
-			// an option that moves a core off of a node that is being evacuated
-			best = move
+	go func() {
+		wg.Wait()
+		close(chanPerm)
+	}()
+
+	var allPerms []permutation
+	for perm := range chanPerm {
+		if perm.cost < baseCost || perm.move.FromNode.Evacuating {
+			allPerms = append(allPerms, perm)
 		}
 	}
 
-	if debug >= 1 {
-		fmt.Printf("best move cost: %f: %s\n", best.cost, best.move)
+	sort.Slice(allPerms, func(i, j int) bool {
+		return allPerms[i].cost < allPerms[j].cost
+	})
+
+	// Now that we have all moves in score order, greedily attempt to apply each move in order
+	// if it improves the current score, until we run out of moves or find the number requested.
+	var moves []Move
+	curModel := m
+	curCost := baseCost
+	immobileCores := map[string]bool{} // cores that have already moved
+	for _, p := range allPerms {
+		move := p.move
+
+		if immobileCores[move.Core.Name] {
+			continue
+		}
+
+		// We have to re-resolve the core and node in the current model.
+		core := curModel.FindCore(move.Core.Name)
+		node := curModel.FindNode(move.ToNode.Name)
+		newModel := curModel.WithMove(core, node)
+		newCost := newModel.Cost()
+
+		// Skip any moves that would increase the cost; this happens because moves were originally considered in isolation.
+		if newCost < curCost {
+			curModel = newModel
+			curCost = newCost
+			moves = append(moves, move)
+			immobileCores[core.Name] = true
+		}
+		if len(moves) >= count {
+			// Found enough
+			return moves
+		}
 	}
-	return best.model, best.move
+	return moves
 }
 
 type Node struct {

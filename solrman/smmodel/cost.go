@@ -62,6 +62,11 @@ func (n *Node) Cost(optimalCoresPerNode, optimalDocsPerNode, optimalSizePerNode 
 		return 0
 	}
 
+	if n.Evacuating {
+		// Cores on an evacuating node should generate a super bad score.
+		optimalCoresPerNode, optimalDocsPerNode, optimalSizePerNode = 0.01, 0.01, 0.01
+	}
+
 	if n.cost == 0 {
 		n.cost = float64(2*n.coreCount*n.coreCount) / optimalCoresPerNode
 		n.cost += n.Docs * n.Docs / optimalDocsPerNode

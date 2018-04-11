@@ -37,7 +37,7 @@ const (
 	allSplitsDocCountTrigger      = 4004000          // But don't do any splits until at least one shard > this
 	allowedMinToMaxShardSizeRatio = 0.2              // Ratio of smallest shard to biggest shard < this then warn about imbalance
 	maxShardsPerMachine           = 16               // Maximum number of shards per machine in the cluster
-	disabledNoticePeriod          = time.Hour*6      // Duration between notices (to alert logger) that solrman is still disabled
+	disabledNoticePeriod          = time.Hour * 6    // Duration between notices (to alert logger) that solrman is still disabled
 )
 
 // Runs the main solr management loop, never returns.
@@ -361,7 +361,7 @@ func computeShardSplits(s *SolrManService, clusterState solrmanapi.SolrCloudStat
 }
 
 func computeShardMoves(clusterState solrmanapi.SolrCloudStatus, evacuatingNodes []string, count int) ([]*solrmanapi.MoveShardRequest, error) {
-	baseModel, err := createModel(clusterState, evacuatingNodes)
+	model, err := createModel(clusterState, evacuatingNodes)
 	if err != nil {
 		return nil, err
 	}
@@ -372,18 +372,8 @@ func computeShardMoves(clusterState solrmanapi.SolrCloudStatus, evacuatingNodes 
 		numCPU = 1
 	}
 
-	var moves []*smmodel.Move
-	immobileCores := map[string]bool{}
-	m := baseModel
-	for i := 0; i < count; i++ {
-		mPrime, move := m.ComputeNextMove(numCPU, immobileCores)
-		if m == mPrime {
-			break
-		}
-		moves = append(moves, move)
-		immobileCores[move.Core.Name] = true
-		m = mPrime
-	}
+	// Compute more moves than we actually need, so we can whittle the results down after.
+	moves := model.ComputeBestMoves(numCPU, count)
 
 	var shardMoves []*solrmanapi.MoveShardRequest
 	if len(moves) > 0 {

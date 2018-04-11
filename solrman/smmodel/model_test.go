@@ -24,42 +24,25 @@ import (
 func TestEmptyModel(t *testing.T) {
 	t.Parallel()
 	m := &Model{}
-	mPrime, move := m.ComputeNextMove(1, nil)
-	if m != mPrime {
+	moves := m.ComputeBestMoves(1, 1)
+	if len(moves) != 0 {
 		t.Errorf("Expected no moves")
 	}
-	assertNil(t, move)
 }
 
 func TestTinyModel(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(tinyModel)
-	mPrime, move := m.ComputeNextMove(1, nil)
-	if m != mPrime {
+	moves := m.ComputeBestMoves(1, 1)
+	if len(moves) != 0 {
 		t.Errorf("Expected no moves")
 	}
-	assertNil(t, move)
 }
 
 func TestSmallModel(t *testing.T) {
 	t.Parallel()
-	baseModel := createTestModel(smallModel)
-
-	var moves []*Move
-	immobileCores := map[string]bool{}
-	m := baseModel
-	for i := 0; i < 3; i++ {
-		mPrime, move := m.ComputeNextMove(1, immobileCores)
-		if m == mPrime {
-			assertNil(t, move)
-			break
-		}
-		assertNotNil(t, move)
-		moves = append(moves, move)
-		immobileCores[move.Core.Name] = true
-		m = mPrime
-	}
-
+	m := createTestModel(smallModel)
+	moves := m.ComputeBestMoves(1, 3)
 	assertEquals(t, []string{
 		`{"core":"A_shard1_1_replica2","collection":"A","shard":"shard1_1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
 	}, moves)
@@ -67,23 +50,8 @@ func TestSmallModel(t *testing.T) {
 
 func TestDeletesExtraReplicas(t *testing.T) {
 	t.Parallel()
-	baseModel := createTestModel(extraReplicaModel)
-
-	var moves []*Move
-	immobileCores := map[string]bool{}
-	m := baseModel
-	for i := 0; i < 3; i++ {
-		mPrime, move := m.ComputeNextMove(1, immobileCores)
-		if m == mPrime {
-			assertNil(t, move)
-			break
-		}
-		assertNotNil(t, move)
-		moves = append(moves, move)
-		immobileCores[move.Core.Name] = true
-		m = mPrime
-	}
-
+	m := createTestModel(extraReplicaModel)
+	moves := m.ComputeBestMoves(1, 3)
 	assertEquals(t, []string{
 		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-2.node","to_node":"solr-1.node"}`,
 	}, moves)
@@ -91,22 +59,8 @@ func TestDeletesExtraReplicas(t *testing.T) {
 
 func TestCollectionBalanceModel(t *testing.T) {
 	t.Parallel()
-	baseModel := createTestModel(collectionBalanceModel)
-
-	var moves []*Move
-	immobileCores := map[string]bool{}
-	m := baseModel
-	for i := 0; i < 3; i++ {
-		mPrime, move := m.ComputeNextMove(1, immobileCores)
-		if m == mPrime {
-			assertNil(t, move)
-			break
-		}
-		assertNotNil(t, move)
-		moves = append(moves, move)
-		immobileCores[move.Core.Name] = true
-		m = mPrime
-	}
+	m := createTestModel(collectionBalanceModel)
+	moves := m.ComputeBestMoves(1, 3)
 
 	assertEquals(t, []string{
 		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
@@ -119,27 +73,14 @@ func TestLargeModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read large model: %s", err)
 	}
-	baseModel := createTestModel(string(data))
 
-	var moves []*Move
-	immobileCores := map[string]bool{}
-	m := baseModel
-	for i := 0; i < 3; i++ {
-		mPrime, move := m.ComputeNextMove(1, immobileCores)
-		if m == mPrime {
-			assertNil(t, move)
-			break
-		}
-		assertNotNil(t, move)
-		moves = append(moves, move)
-		immobileCores[move.Core.Name] = true
-		m = mPrime
-	}
-
+	// TODO(jh): review results
+	m := createTestModel(string(data))
+	moves := m.ComputeBestMoves(1, 3)
 	assertEquals(t, []string{
 		`{"core":"coll12_shard1_0_replica1","collection":"coll12","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-9.node"}`,
+		`{"core":"coll12_shard1_1_replica1","collection":"coll12","shard":"shard1_1","from_node":"solr-1.node","to_node":"solr-10.node"}`,
 		`{"core":"coll3_shard1_0_replica1","collection":"coll3","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-9.node"}`,
-		`{"core":"coll63_shard1_0_replica1","collection":"coll63","shard":"shard1_0","from_node":"solr-2.node","to_node":"solr-10.node"}`,
 	}, moves)
 }
 
@@ -149,31 +90,52 @@ func TestLargeModel_EvacuatingNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read evac model: %s", err)
 	}
-	baseModel := createTestModel(string(data), "solr-8.node", "solr-9.node")
 
-	immobileCores := map[string]bool{}
-	m := baseModel
-	for {
-		// all moves should be from solr-8 or solr-9 until they are evacuated
-		mPrime, move := m.ComputeNextMove(1, immobileCores)
-		assertNotNil(t, move)
-		if move.FromNode.Name != "solr-8.node" && move.FromNode.Name != "solr-9.node" {
-			// we should now be done evacuating these two nodes
-			for _, n := range m.Nodes {
-				if n.Name == "solr-8.node" || n.Name == "solr-9.node" {
-					if n.coreCount > 0 {
-						t.Errorf("Computed move from %s (%f -> %f) even though evacuating node %s still has %d cores", move.FromNode.Name, m.cost, mPrime.cost, n.Name, n.coreCount)
-					}
-				}
-			}
-			break
-		}
-		immobileCores[move.Core.Name] = true
-		m = mPrime
+	// TODO(jh): revamp this test; I'm also not sure if the underlying evacuate nodes logic is working right at all.
+	m := createTestModel(string(data), "solr-8.node", "solr-9.node")
+	moves := m.ComputeBestMoves(1, 50)
+
+	// Should be just evacuation moves.
+	assertEquals(t, []string{
+		`{"core":"coll23_shard1_1_0_1_1_replica2","collection":"coll23","shard":"shard1_1_0_1_1","from_node":"solr-8.node","to_node":"solr-10.node"}`,
+		`{"core":"coll23_shard1_1_0_1_0_replica2","collection":"coll23","shard":"shard1_1_0_1_0","from_node":"solr-8.node","to_node":"solr-7.node"}`,
+		`{"core":"coll7A_shard1_1_1_replica2","collection":"coll7A","shard":"shard1_1_1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
+		`{"core":"coll32_shard1_1_0_1_1_1_replica1","collection":"coll32","shard":"shard1_1_0_1_1_1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
+		`{"core":"coll13_shard1_0_1_1_replica1","collection":"coll13","shard":"shard1_0_1_1","from_node":"solr-8.node","to_node":"solr-10.node"}`,
+		`{"core":"coll15_shard1_1_1_1_1_0_replica2","collection":"coll15","shard":"shard1_1_1_1_1_0","from_node":"solr-9.node","to_node":"solr-7.node"}`,
+		`{"core":"coll32_shard1_1_1_1_0_0_replica1","collection":"coll32","shard":"shard1_1_1_1_0_0","from_node":"solr-9.node","to_node":"solr-1.node"}`,
+		`{"core":"coll2C_shard1_1_1_1_1_replica2","collection":"coll2C","shard":"shard1_1_1_1_1","from_node":"solr-9.node","to_node":"solr-7.node"}`,
+		`{"core":"coll3E_shard1_1_0_1_1_replica2","collection":"coll3E","shard":"shard1_1_0_1_1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
+		`{"core":"coll15_shard1_1_1_1_1_1_replica2","collection":"coll15","shard":"shard1_1_1_1_1_1","from_node":"solr-9.node","to_node":"solr-1.node"}`,
+		`{"core":"coll3AD_shard1_replica1","collection":"coll3AD","shard":"shard1","from_node":"solr-8.node","to_node":"solr-1.node"}`,
+		`{"core":"coll3AC_shard1_replica2","collection":"coll3AC","shard":"shard1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
+		`{"core":"coll3AE_shard1_replica1","collection":"coll3AE","shard":"shard1","from_node":"solr-8.node","to_node":"solr-1.node"}`,
+		`{"core":"coll3B5_shard1_replica1","collection":"coll3B5","shard":"shard1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
+		`{"core":"coll3B4_shard1_replica1","collection":"coll3B4","shard":"shard1","from_node":"solr-9.node","to_node":"solr-5.node"}`,
+		`{"core":"coll3B0_shard1_replica1","collection":"coll3B0","shard":"shard1","from_node":"solr-9.node","to_node":"solr-7.node"}`,
+	}, moves)
+
+	// Execute the moves.
+	curModel := m
+	for _, move := range moves {
+		// We have to re-resolve the core and node in the current model.
+		core := curModel.FindCore(move.Core.Name)
+		node := curModel.FindNode(move.ToNode.Name)
+		curModel = curModel.WithMove(core, node)
 	}
+
+	// After evacuations are done, normal moves should commence.
+	moves = curModel.ComputeBestMoves(1, 3)
+	assertEquals(t, []string{
+		`{"core":"coll12_shard1_0_replica1","collection":"coll12","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-10.node"}`,
+		`{"core":"coll12_shard1_1_replica1","collection":"coll12","shard":"shard1_1","from_node":"solr-1.node","to_node":"solr-7.node"}`,
+		`{"core":"coll3_shard1_0_replica1","collection":"coll3","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-10.node"}`,
+	}, moves)
+
 }
 
-func assertEquals(t *testing.T, expected []string, actual []*Move) {
+func assertEquals(t *testing.T, expected []string, actual []Move) {
+	t.Helper()
 	if len(expected) != len(actual) {
 		t.Errorf("expected: %v, actual: %v", expected, actual)
 		return
@@ -182,18 +144,6 @@ func assertEquals(t *testing.T, expected []string, actual []*Move) {
 		if actual[i].String() != expected[i] {
 			t.Errorf("at index: %v, expected: %v, actual: %v", i, expected[i], actual[i])
 		}
-	}
-}
-
-func assertNil(t *testing.T, move *Move) {
-	if move != nil {
-		t.Errorf("expect nil, got: %v", move)
-	}
-}
-
-func assertNotNil(t *testing.T, move *Move) {
-	if move == nil {
-		t.Errorf("expect not-nil")
 	}
 }
 
