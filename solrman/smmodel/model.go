@@ -191,7 +191,7 @@ func (m *Model) computeNextMoveShard(mustEvacuate bool, shard int, shardCount in
 					move: Move{Core: core, FromNode: fromNode, ToNode: toNode},
 				}
 				if debug >= 1 {
-					fmt.Printf("move cost: %f: %s\n", perm.cost, perm.move)
+					fmt.Printf("move cost: %f: %s\n", perm.cost, perm.move.String())
 				}
 				chanPerm <- perm
 			}
