@@ -15,6 +15,7 @@
 package smservice
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -263,18 +264,26 @@ func httpGetJson(url string, rsp HasErrorRsp, client *http.Client) error {
 	if err != nil {
 		return smutil.Cherrf(err, "failed request")
 	}
-
-	defer drainAndClose(rawRsp.Body)
-	if err := checkResponse(rawRsp); err != nil {
-		return smutil.Cherrf(err, "failed request")
+	body, err := readBody(rawRsp.Body)
+	bodyText := strings.TrimSpace(string(body))
+	if err != nil {
+		return &ErrorRsp{
+			Code: rawRsp.StatusCode,
+			Msg:  bodyText + "\nfailed to read body: " + err.Error(),
+		}
+	}
+	if rawRsp.StatusCode < 200 || rawRsp.StatusCode >= 300 {
+		return &ErrorRsp{
+			Code: rawRsp.StatusCode,
+			Msg:  bodyText,
+		}
 	}
 
-	decoder := json.NewDecoder(rawRsp.Body)
+	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	if err := decoder.Decode(rsp); err != nil {
-		return smutil.Cherrf(err, "invalid json response")
+		return smutil.Cherrf(err, "invalid json response:\n%s", bodyText)
 	}
-
 	if err := rsp.ErrorRsp(); err != nil {
 		return smutil.Cherrf(err, "solr returned an error response")
 	}
@@ -282,29 +291,13 @@ func httpGetJson(url string, rsp HasErrorRsp, client *http.Client) error {
 	return nil
 }
 
-// discards any remaining bytes in r, then closes r.
-func drainAndClose(r io.ReadCloser) error {
-	_, copyErr := io.Copy(ioutil.Discard, r)
+// Reads all bytes in n r, then closes r.
+func readBody(r io.ReadCloser) ([]byte, error) {
+	ret, readErr := ioutil.ReadAll(r)
 	closeErr := r.Close()
-	if closeErr != nil {
-		return closeErr
+	if readErr != nil {
+		return ret, readErr
 	} else {
-		return copyErr
-	}
-}
-
-func checkResponse(rsp *http.Response) error {
-	if rsp.StatusCode >= 200 && rsp.StatusCode <= 299 {
-		return nil
-	}
-	body, err := ioutil.ReadAll(rsp.Body)
-	if err != nil {
-		body = []byte("[failed to read body]")
-	}
-	rsp.Body.Close()
-
-	return &ErrorRsp{
-		Code: rsp.StatusCode,
-		Msg:  strings.TrimSpace(string(body)),
+		return ret, closeErr
 	}
 }
