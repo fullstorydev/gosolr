@@ -16,6 +16,8 @@ package smservice
 
 import (
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/fullstorydev/gosolr/smutil"
@@ -134,9 +136,29 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 	}
 
 	if err := s.solrClient.DeleteReplica(move.Collection, move.Shard, original, ""); err != nil {
-		return smutil.Cherrf(err, "failed to issue DELETEREPLICA command")
+		// If this fails because the replica doesn't exist, then we assume that some prior attempt finished the job
+		// (probably the http request timed out, but the actual api action eventually succeeded within Solr).  So we
+		// just treat this as a success.
+		if solrErr := isNoSuchReplicaError(err, original); solrErr != nil {
+			s.Logger.Debugf("assuming replica was previously deleted: %s", solrErr)
+			success = true
+			return nil
+		} else {
+			return smutil.Cherrf(err, "failed to issue DELETEREPLICA command")
+		}
 	}
 	s.Logger.Debugf("DELETEREPLICA command issued successfully MoveShard request: %s", move.String())
 	success = true
+	return nil
+}
+
+func isNoSuchReplicaError(err error, replica string) *ErrorRsp {
+	if err, ok := smutil.Root(err).(*ErrorRsp); ok {
+		s := fmt.Sprintf("Invalid replica : %s", replica)
+		if err.Code == http.StatusBadRequest && strings.Contains(err.Msg, s) {
+			return err
+		}
+	}
+
 	return nil
 }
