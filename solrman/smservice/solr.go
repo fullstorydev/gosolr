@@ -55,6 +55,22 @@ type ErrorRsp struct {
 	Code int    `json:"code"`
 }
 
+var _ json.Unmarshaler = (*ErrorRsp)(nil)
+
+type defaultUnmarshalErrorRsp ErrorRsp
+
+// Usually Solr returns `error` as a JSON object, but (rarely) it's just a JSON string.
+func (e *ErrorRsp) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		// It's a string error.
+		e.Code = 0
+		return json.Unmarshal(data, &e.Msg)
+	} else {
+		// It's a struct error.
+		return json.Unmarshal(data, (*defaultUnmarshalErrorRsp)(e))
+	}
+}
+
 func (e *ErrorRsp) Error() string {
 	if e == nil {
 		return "<nil>"
@@ -89,6 +105,7 @@ type RequestStatusRsp struct {
 		State string `json:"state"`
 		Msg   string `json:"msg"`
 	} `json:"status"`
+	RequestId string `json:"requestid"`
 }
 
 // CoreStatusRsp is returned by from /admin/cores?action=STATUS
@@ -119,6 +136,8 @@ type CoreIndexStatus struct {
 type SolrClient struct {
 	HttpClient  *http.Client
 	SolrMonitor *solrmonitor.SolrMonitor
+	Logger      smutil.Logger
+	sleepFunc   func(duration time.Duration)
 }
 
 // AddReplica adds a replica (asynchronously, if requestId is not empty).
@@ -229,7 +248,7 @@ func (sc *SolrClient) doCollectionCall(params url.Values, rsp HasErrorRsp) error
 	params.Add("wt", "json")
 	urls := fmt.Sprintf("http://%s:%s/%s/admin/collections?%s", ip, port, root, params.Encode())
 
-	if err := httpGetJson(urls, rsp, sc.HttpClient); err != nil {
+	if err := sc.httpGetJson(urls, rsp); err != nil {
 		return smutil.Cherrf(err, "failed to query %s with params: %s", urls, params)
 	}
 
@@ -247,48 +266,81 @@ func (sc *SolrClient) doCoreCall(solrNode string, params url.Values, rsp HasErro
 	params.Add("wt", "json")
 	urls := fmt.Sprintf("http://%s:%s/%s/admin/cores?%s", ip, port, root, params.Encode())
 
-	if err := httpGetJson(urls, rsp, sc.HttpClient); err != nil {
+	if err := sc.httpGetJson(urls, rsp); err != nil {
 		return smutil.Cherrf(err, "failed to query %s with params: %s", urls, params)
 	}
 
 	return nil
 }
 
-func httpGetJson(url string, rsp HasErrorRsp, client *http.Client) error {
+const duplicateTaskMsg = "Task with the same requestid already exists."
+
+func (sc *SolrClient) httpGetJson(url string, rsp HasErrorRsp) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return smutil.Cherrf(err, "failed to create request")
 	}
 
-	rawRsp, err := client.Do(req)
+	rawRsp, didRetry, err := func() (*http.Response, bool, error) {
+		var lastErr error
+		for retry := uint(0); retry <= 6; retry++ {
+			if retry > 0 {
+				dur := time.Duration(1<<(retry-1)) * time.Second
+				if sc.sleepFunc == nil {
+					time.Sleep(dur)
+				} else {
+					sc.sleepFunc(dur)
+				}
+			}
+			rawRsp, err := sc.HttpClient.Do(req)
+			if err != nil {
+				sc.Logger.Warningf("attempt %d: error contacting solr: %s", retry+1, err)
+				lastErr = err
+				continue
+			}
+			return rawRsp, retry > 0, nil
+		}
+		return nil, true, lastErr
+	}()
 	if err != nil {
 		return smutil.Cherrf(err, "failed request")
 	}
 	body, err := readBody(rawRsp.Body)
 	bodyText := strings.TrimSpace(string(body))
 	if err != nil {
-		return &ErrorRsp{
-			Code: rawRsp.StatusCode,
-			Msg:  bodyText + "\nfailed to read body: " + err.Error(),
-		}
+		return smutil.Cherrf(err, "failed to read body: StatusCode=%d", rawRsp.StatusCode)
 	}
+
+	if err := jsonDecode(body, rsp); err != nil {
+		// If we can't decode the json, just jam the entire body text into the error.
+		return smutil.Cherrf(err, "failed to decode json:\n%s", bodyText)
+	}
+
 	if rawRsp.StatusCode < 200 || rawRsp.StatusCode >= 300 {
-		return &ErrorRsp{
-			Code: rawRsp.StatusCode,
-			Msg:  bodyText,
+		// If we got a bad HTTP status code, we should also get an ErrorRsp.
+		if err := rsp.ErrorRsp(); err == nil || err.Code != rawRsp.StatusCode {
+			return smutil.Cherrf(&ErrorRsp{
+				Code: rawRsp.StatusCode,
+				Msg:  bodyText,
+			}, "solr returned a bad status code, but no matching error.code")
 		}
 	}
 
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(rsp); err != nil {
-		return smutil.Cherrf(err, "invalid json response:\n%s", bodyText)
-	}
 	if err := rsp.ErrorRsp(); err != nil {
+		if didRetry && rsp.ErrorRsp().Msg == duplicateTaskMsg {
+			// Just treat "duplicate task" as success, since a previous call must have succeeded.
+			return nil
+		}
 		return smutil.Cherrf(err, "solr returned an error response")
 	}
 
 	return nil
+}
+
+func jsonDecode(body []byte, rsp HasErrorRsp) error {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	return decoder.Decode(rsp)
 }
 
 // Reads all bytes in n r, then closes r.

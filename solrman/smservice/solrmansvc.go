@@ -201,6 +201,7 @@ func (s *SolrManService) Init() {
 	s.solrClient = &SolrClient{
 		HttpClient:  s.HttpClient,
 		SolrMonitor: s.SolrMonitor,
+		Logger:      s.Logger,
 	}
 
 	if s.inProgressOps != nil {
