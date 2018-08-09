@@ -129,7 +129,7 @@ func (c *SolrMonitor) start() error {
 		return err
 	}
 	if len(globalClusterState) > 2 {
-		return fmt.Errorf("%s: solrmonitor does not support state format v1; zk node should contain only '{}'; please use Solr's MIGRATESTATEFORMAT collections command", globalClusterStatePath)
+		c.logger.Printf("%s: solrmonitor does not support state format v1; zk node should contain only '{}'; please use Solr's MIGRATESTATEFORMAT collections command", globalClusterStatePath)
 	}
 
 	collectionsPath := c.solrRoot + "/collections"
