@@ -130,7 +130,7 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 	}
 
 	// Now delete the original
-	original := findReplica(replicas, move.SrcNode, activeReplica)
+	original := findReplica(replicas, move.SrcNode, anyReplica)
 	if original == "" {
 		return smutil.Errorf("no original found for shard %s of collection %q on node %s!?", move.Shard, move.Collection, move.SrcNode)
 	}
