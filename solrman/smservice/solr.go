@@ -298,6 +298,22 @@ func (sc *SolrClient) httpGetJson(url string, rsp HasErrorRsp) error {
 				lastErr = err
 				continue
 			}
+
+			if rawRsp.StatusCode == 500 {
+				var msg string
+				body, err := readBody(rawRsp.Body)
+				if err != nil {
+					msg = fmt.Sprintf("failed to read body: %s", err.Error())
+				} else {
+					msg = strings.TrimSpace(string(body))
+				}
+				lastErr =  smutil.Cherrf(&ErrorRsp{
+					Code: rawRsp.StatusCode,
+					Msg:  msg,
+				}, "solr returned 500 status code")
+				continue
+			}
+
 			return rawRsp, retry > 0, nil
 		}
 		return nil, true, lastErr

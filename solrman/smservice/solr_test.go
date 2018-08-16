@@ -71,11 +71,17 @@ func TestHttpRetries(t *testing.T) {
 			Body:       ioutil.NopCloser(strings.NewReader(`{}`)),
 		}
 	}
-	testErrMsg := "test error message"
+	const testErrMsg = "test error message"
 	badResponse := func() *http.Response {
 		return &http.Response{
 			StatusCode: 400,
 			Body:       ioutil.NopCloser(strings.NewReader(fmt.Sprintf(errorObjectPayload, testErrMsg))),
+		}
+	}
+	errResponse := func() *http.Response {
+		return &http.Response{
+			StatusCode: 500,
+			Body:       ioutil.NopCloser(strings.NewReader(testErrMsg)),
 		}
 	}
 	netErr := net.UnknownNetworkError("test error")
@@ -148,12 +154,50 @@ func TestHttpRetries(t *testing.T) {
 				}
 			},
 		},
+		// Permanent server error case.
+		{
+			handler: func(_ *http.Request, call int) (*http.Response, error) {
+				switch call {
+				case 0, 1, 2, 3, 4, 5, 6:
+					return errResponse(), nil
+				default:
+					panic("too many calls")
+				}
+			},
+			expectCalls: 7,
+			expectSleep: sleepTimes,
+			expectErr: func(err error) {
+				errRsp := smutil.Root(err).(*ErrorRsp)
+				if code := errRsp.Code; code != 500 {
+					t.Errorf("expected 500, got %d", code)
+				}
+				if msg := errRsp.Msg; msg != testErrMsg {
+					t.Errorf("expected %q, got %q", testErrMsg, msg)
+				}
+			},
+		},
 		// Temporary failure case.
 		{
 			handler: func(_ *http.Request, call int) (*http.Response, error) {
 				switch call {
 				case 0, 1, 2:
 					return nil, netErr
+				case 3:
+					return goodResponse(), nil
+				default:
+					panic("too many calls")
+				}
+			},
+			expectCalls: 4,
+			expectSleep: sleepTimes[0:3],
+			expectErr:   nil,
+		},
+		// Temporary server error case.
+		{
+			handler: func(_ *http.Request, call int) (*http.Response, error) {
+				switch call {
+				case 0, 1, 2:
+					return errResponse(), nil
 				case 3:
 					return goodResponse(), nil
 				default:
