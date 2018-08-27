@@ -38,12 +38,14 @@ const (
 	allowedMinToMaxShardSizeRatio = 0.2              // Ratio of smallest shard to biggest shard < this then warn about imbalance
 	maxShardsPerMachine           = 16               // Maximum number of shards per machine in the cluster
 	disabledNoticePeriod          = time.Hour * 6    // Duration between notices (to alert logger) that solrman is still disabled
+	waitBeforeAlerting            = time.Minute * 5  // Time before solrman sends a slack notification about not being golden
 )
 
 // Runs the main solr management loop, never returns.
 func (s *SolrManService) RunSolrMan() {
 	s.setStatusOp("solrman is starting up")
-	clusterStateGolden := true // assume true to start
+	clusterStateGolden := time.Now()
+	isAlerting := false
 
 	var nextDisabledNotice time.Time
 
@@ -107,9 +109,9 @@ func (s *SolrManService) RunSolrMan() {
 			for _, p := range problems {
 				s.Logger.Infof("PROBLEM: %v", p)
 			}
-			if clusterStateGolden {
+			if !isAlerting && time.Now().Sub(clusterStateGolden) > waitBeforeAlerting {
+				isAlerting = true
 				s.AlertLog.Errorf("cluster state became not golden; see logs for details")
-				clusterStateGolden = false
 			}
 			s.setStatusOp("cluster state is not golden; waiting for cluster state to become golden")
 			s.Logger.Warningf("cluster state is not golden, skipping; see logs for details")
@@ -118,9 +120,10 @@ func (s *SolrManService) RunSolrMan() {
 
 		s.clearStatusOp()
 
-		if !clusterStateGolden {
+		clusterStateGolden = time.Now()
+		if isAlerting {
 			s.AlertLog.Infof("cluster state became golden; resuming operation")
-			clusterStateGolden = true
+			isAlerting = false
 		}
 
 		badlyBalancedOrgs := flagBadlyBalancedOrgs(s.Logger, s, solrStatus)
