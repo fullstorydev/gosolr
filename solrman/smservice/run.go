@@ -420,7 +420,7 @@ func createModel(clusterState solrmanapi.SolrCloudStatus, evacuatingNodes []stri
 		currentNode = &smmodel.Node{
 			Name:       nodeStatus.Hostname,
 			Address:    nodeStatus.NodeName,
-			Evacuating: evacuatingNodeSet[nodeStatus.Hostname],
+			Evacuating: evacuatingNodeSet[nodeStatus.Hostname] || evacuatingNodeSet[nodeStatus.NodeName],
 		}
 		m.AddNode(currentNode)
 
