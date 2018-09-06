@@ -102,13 +102,13 @@ func (m *zkWatcherMan) Start() {
 						err := m.monitorChildren(true, task.path, task.onchange)
 						if err != nil {
 							success = false
-							m.logger.Printf("ERROR: monitorChildren %s failed: %s", task.path, err)
+							m.logger.Printf("monitorChildren %s failed: %s", task.path, err)
 						}
 					case deferredDataTask:
 						err := m.monitorData(true, task.path, task.onchange)
 						if err != nil {
 							success = false
-							m.logger.Printf("ERROR: monitorData %s failed: %s", task.path, err)
+							m.logger.Printf("monitorData %s failed: %s", task.path, err)
 						}
 					default:
 						panic(fmt.Sprintf("Unexpected item in taskqueue %+v", task))

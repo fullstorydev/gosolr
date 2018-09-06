@@ -83,7 +83,7 @@ func (c *SolrMonitor) GetCurrentState() (ClusterState, error) {
 	for name := range c.collections {
 		collectionState, err := c.doGetCollectionState(name)
 		if err != nil {
-			c.logger.Printf("ERROR: fetching state for collection %s: %s", name, err)
+			c.logger.Printf("collection %s: error fetching state: %s", name, err)
 			continue
 		}
 		if collectionState != nil {
@@ -129,7 +129,8 @@ func (c *SolrMonitor) start() error {
 		return err
 	}
 	if len(globalClusterState) > 2 {
-		c.logger.Printf("%s: solrmonitor does not support state format v1; zk node should contain only '{}'; please use Solr's MIGRATESTATEFORMAT collections command", globalClusterStatePath)
+		err := fmt.Errorf("%s: solrmonitor does not support state format v1; zk node should contain only '{}'", globalClusterStatePath)
+		c.logger.Printf("please use Solr's MIGRATESTATEFORMAT collections command: %s", err)
 	}
 
 	collectionsPath := c.solrRoot + "/collections"

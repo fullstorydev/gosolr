@@ -307,7 +307,7 @@ func (sc *SolrClient) httpGetJson(url string, rsp HasErrorRsp) error {
 				} else {
 					msg = strings.TrimSpace(string(body))
 				}
-				lastErr =  smutil.Cherrf(&ErrorRsp{
+				lastErr = smutil.Cherrf(&ErrorRsp{
 					Code: rawRsp.StatusCode,
 					Msg:  msg,
 				}, "solr returned 500 status code")
