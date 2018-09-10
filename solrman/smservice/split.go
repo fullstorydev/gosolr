@@ -103,31 +103,24 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 	s.Logger.Debugf("async SPLITSHARD command issued successfully (requestid = %q)", requestId)
 
 	// Wait on the split to happen
+	timeout := time.Now().Add(time.Hour)
 	for {
-		// Only check request status to determine error conditions.
-		_, errMsg, err := checkRequestStatus(s.Logger, "SPLITSHARD", requestId, s.solrClient)
-		if err != nil {
-			return smutil.Cherrf(err, "failed to get status of request %q", requestId)
-		} else if errMsg != "" {
-			return smutil.Errorf("async SPLITSHARD failed: %s", errMsg)
+		if time.Now().After(timeout) {
+			return smutil.Errorf("timed out after %s", time.Hour)
 		}
 
-		// Track the split ourselves, because solr is not reliable at reporting async results.
-		// else (isDone = false) we check manually to see if the split has completed because solrcloud is not reliable
-		// about reporting when async commands are done (it will sometimes report commands as in progress when they have
-		// been done for a long time)
 		coll, err := s.SolrMonitor.GetCollectionState(split.Collection)
 		if err != nil {
-			return smutil.Cherrf(err, "failed to read cluster state")
-		}
-
-		child0 := split.Shard + "_0"
-		child1 := split.Shard + "_1"
-		if activeShardExists(coll, child0) && activeShardExists(coll, child1) && inactiveShardExists(coll, split.Shard) {
-			s.Logger.Debugf("shards %s and %s exist and are active, and shard %s is inactive - assuming SPLITSHARD has completed", child0, child1, split.Shard)
-			s.Audit.SuccessOp(split, *coll) // should log state where parent shard still exists
-			lastZkVersion = coll.ZkNodeVersion
-			break
+			s.Logger.Warningf("Error retrieving collection state for %s: %s", split.Collection, err)
+		} else {
+			child0 := split.Shard + "_0"
+			child1 := split.Shard + "_1"
+			if activeShardExists(coll, child0) && activeShardExists(coll, child1) && inactiveShardExists(coll, split.Shard) {
+				s.Logger.Debugf("shards %s and %s exist and are active, and shard %s is inactive - assuming SPLITSHARD has completed", child0, child1, split.Shard)
+				s.Audit.SuccessOp(split, *coll) // should log state where parent shard still exists
+				lastZkVersion = coll.ZkNodeVersion
+				break
+			}
 		}
 
 		// consider something event-driven instead of polling

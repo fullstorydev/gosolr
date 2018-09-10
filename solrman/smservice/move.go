@@ -107,7 +107,12 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 	}
 
 	// Wait on the replica to sync up and be "live"
+	timeout := time.Now().Add(time.Hour)
 	for {
+		if time.Now().After(timeout) {
+			return smutil.Errorf("timed out after %s", time.Hour)
+		}
+
 		coll, err := s.SolrMonitor.GetCollectionState(move.Collection)
 		if err != nil {
 			// TODO: give up eventually after too many retries?
@@ -125,6 +130,7 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 				break
 			}
 		}
+
 		// consider something event-driven instead of polling
 		time.Sleep(10 * time.Second)
 	}
