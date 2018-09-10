@@ -138,7 +138,9 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 	// Now delete the original
 	original := findReplica(replicas, move.SrcNode, anyReplica)
 	if original == "" {
-		return smutil.Errorf("no original found for shard %s of collection %q on node %s!?", move.Shard, move.Collection, move.SrcNode)
+		s.Logger.Warningf("No original found for shard %s of collection %q on node %s!? Assuming replica was deleted", move.Shard, move.Collection, move.SrcNode)
+		success = true
+		return nil
 	}
 
 	if err := s.solrClient.DeleteReplica(move.Collection, move.Shard, original, ""); err != nil {
