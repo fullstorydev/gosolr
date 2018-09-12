@@ -72,16 +72,27 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 
 	s.Audit.BeforeOp(move, *coll)
 	lastZkVersion := coll.ZkNodeVersion
+
+	// Add a replica if none exists.
+	if replica := findReplica(replicas, move.DstNode, anyReplica); replica == "" {
+		// No replica exists, need to add one.
+		if err := s.solrClient.AddReplica(move.Collection, move.Shard, move.DstNode, ""); err != nil {
+			s.Audit.FailedOp(move, *coll)
+			return smutil.Cherrf(err, "failed to issue ADDREPLICA command")
+		}
+		s.Logger.Debugf("ADDREPLICA command issued successfully MoveShard request: %s", move.String())
+	}
+
+	// From here on, disable solrman if the op fails.
 	success := false
 	defer func() {
-		var newCollState *solrmonitor.CollectionState
 		for retry := 0; retry < 3; retry++ {
-			var err error
-			if newCollState, err = s.SolrMonitor.GetCollectionState(move.Collection); err != nil {
+			if newCollState, err := s.SolrMonitor.GetCollectionState(move.Collection); err != nil {
 				s.Logger.Errorf("failed to retrieve collection state after op %s: %s", move.String(), err)
-				return
+				break
 			} else {
 				if newCollState.ZkNodeVersion > lastZkVersion {
+					coll = newCollState
 					break
 				}
 			}
@@ -89,22 +100,12 @@ func (s *SolrManService) doRunMoveOperation(move solrmanapi.OpRecord) error {
 			time.Sleep(5 * time.Second)
 		}
 		if success {
-			s.Audit.SuccessOp(move, *newCollState)
+			s.Audit.SuccessOp(move, *coll)
 		} else {
-			s.Audit.FailedOp(move, *newCollState)
+			s.Audit.FailedOp(move, *coll)
 			s.disable()
 		}
 	}()
-
-	// Add a replica if none exists.
-	// TODO: scottb handle timeout separately from other failures, we should loop and retry?
-	if replica := findReplica(replicas, move.DstNode, anyReplica); replica == "" {
-		// No replica exists, need to add one.
-		if err := s.solrClient.AddReplica(move.Collection, move.Shard, move.DstNode, ""); err != nil {
-			return smutil.Cherrf(err, "failed to issue ADDREPLICA command")
-		}
-		s.Logger.Debugf("ADDREPLICA command issued successfully MoveShard request: %s", move.String())
-	}
 
 	// Wait on the replica to sync up and be "live"
 	timeout := time.Now().Add(time.Hour)

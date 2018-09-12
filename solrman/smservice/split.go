@@ -71,16 +71,25 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 
 	s.Audit.BeforeOp(split, *coll)
 	lastZkVersion := coll.ZkNodeVersion
+
+	// this must be the initial request, so the first step is to start a SPLITSHARD command
+	requestId := newSolrRequestId()
+	if err := s.solrClient.SplitShard(split.Collection, split.Shard, requestId); err != nil {
+		s.Audit.FailedOp(split, *coll)
+		return smutil.Cherrf(err, "failed to issue SPLITSHARD command")
+	}
+	s.Logger.Debugf("async SPLITSHARD command issued successfully (requestid = %q)", requestId)
+
+	// From here on, disable solrman if the op fails.
 	success := false
 	defer func() {
-		var newCollState *solrmonitor.CollectionState
 		for retry := 0; retry < 3; retry++ {
-			var err error
-			if newCollState, err = s.SolrMonitor.GetCollectionState(split.Collection); err != nil {
+			if newCollState, err := s.SolrMonitor.GetCollectionState(split.Collection); err != nil {
 				s.Logger.Errorf("failed to retrieve collection state after op %s: %s", split.String(), err)
-				return
+				break
 			} else {
 				if newCollState.ZkNodeVersion > lastZkVersion {
+					coll = newCollState
 					break
 				}
 			}
@@ -88,19 +97,12 @@ func (s *SolrManService) doRunSplitOperation(split solrmanapi.OpRecord) error {
 			time.Sleep(5 * time.Second)
 		}
 		if success {
-			s.Audit.SuccessOp(split, *newCollState)
+			s.Audit.SuccessOp(split, *coll)
 		} else {
-			s.Audit.FailedOp(split, *newCollState)
+			s.Audit.FailedOp(split, *coll)
 			s.disable()
 		}
 	}()
-
-	// this must be the initial request, so the first step is to start a SPLITSHARD command
-	requestId := newSolrRequestId()
-	if err := s.solrClient.SplitShard(split.Collection, split.Shard, requestId); err != nil {
-		return smutil.Cherrf(err, "failed to issue SPLITSHARD command")
-	}
-	s.Logger.Debugf("async SPLITSHARD command issued successfully (requestid = %q)", requestId)
 
 	// Wait on the split to happen
 	timeout := time.Now().Add(time.Hour)
