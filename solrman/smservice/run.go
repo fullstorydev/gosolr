@@ -241,7 +241,10 @@ func (s *SolrManService) setStatusOp(status string) {
 
 // For admin visibility
 func (s *SolrManService) GetStatusOp() *solrmanapi.OpRecord {
-	return s.statusOp
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := *s.statusOp
+	return &out
 }
 
 type SplitShardRequestWithSize struct {
