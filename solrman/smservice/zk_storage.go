@@ -262,6 +262,22 @@ func (s *ZkStorage) IsSplitsDisabled() bool {
 	return exists
 }
 
+func (s *ZkStorage) SetSplitsDisabled(disabled bool) error {
+	path := s.disableSplitsPath()
+	if disabled {
+		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
+		if err != nil && err != zk.ErrNodeExists {
+			return smutil.Cherrf(err, "could not create %s in ZK", path)
+		}
+	} else {
+		err := s.conn.Delete(path, -1)
+		if err != nil && err != zk.ErrNoNode {
+			return smutil.Cherrf(err, "could not delete %s in ZK", path)
+		}
+	}
+	return nil
+}
+
 func (s *ZkStorage) IsMovesDisabled() bool {
 	path := s.disableMovesPath()
 	exists, _, err := s.conn.Exists(path)
@@ -272,6 +288,22 @@ func (s *ZkStorage) IsMovesDisabled() bool {
 		return true // assume disabled if we have an error
 	}
 	return exists
+}
+
+func (s *ZkStorage) SetMovesDisabled(disabled bool) error {
+	path := s.disableMovesPath()
+	if disabled {
+		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
+		if err != nil && err != zk.ErrNodeExists {
+			return smutil.Cherrf(err, "could not create %s in ZK", path)
+		}
+	} else {
+		err := s.conn.Delete(path, -1)
+		if err != nil && err != zk.ErrNoNode {
+			return smutil.Cherrf(err, "could not delete %s in ZK", path)
+		}
+	}
+	return nil
 }
 
 func jsonString(op *solrmanapi.OpRecord) string {

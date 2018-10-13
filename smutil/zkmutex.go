@@ -95,7 +95,7 @@ func monitorZkMutex(logger Logger, conn *zk.Conn, path string, onLostMutex func(
 				if err := conn.Delete(path, ourVersion); err != nil {
 					logger.Warningf("failed to delete ZK mutex %s while exiting: %s", path, err)
 				} else {
-					logger.Debugf("deleting ZK mutex %s while exiting: %s", path)
+					logger.Debugf("deleting ZK mutex %s while exiting", path)
 				}
 			}
 		}()

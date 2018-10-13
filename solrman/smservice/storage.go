@@ -43,5 +43,8 @@ type SolrManStorage interface {
 	SetDisabled(bool) error // disable solrman due to unrecoverable error completing an op
 
 	IsSplitsDisabled() bool // if true, don't do splits
+	SetSplitsDisabled(bool) error // disable splits
+
 	IsMovesDisabled() bool  // if true, don't do moves
+	SetMovesDisabled(bool) error // disable moves
 }
