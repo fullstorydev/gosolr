@@ -31,6 +31,7 @@ import (
 )
 
 type SolrManService struct {
+	ClusterName string
 	HttpClient  *http.Client
 	SolrMonitor *solrmonitor.SolrMonitor
 	ZooClient   *zk.Conn

@@ -16,6 +16,7 @@ package smservice
 
 import (
 	"fmt"
+	"fs/metrics"
 	"runtime"
 	"sort"
 	"strings"
@@ -41,11 +42,30 @@ const (
 	waitBeforeAlerting            = time.Minute * 5  // Time before solrman sends a slack notification about not being golden
 )
 
+var (
+	// Prometheus Metrics
+	// NOTE: because of the for..continue design of RunSolrMan, some metrics could get out of date if issues are
+	// detected before they get processed. ZkConnected will  always be correct since it's the first metric processed.
+	// Metrics are processed in the following order: ZkIsConnected -> InProgressOps -> SolrLiveNodes -> ProblemCount.
+	metricLabels = metrics.Labels{"cluster"} // Labels used for prometheus metrics
+	// Is solrman currently connected to zookeeper. 1 if connected and 0 otherwise
+	ZkIsConnected = metrics.NewLabelledGauge("solrman.zk.connected", "Is solrman currently connected to zookeeper. 1 if connected and 0 otherwise", metricLabels)
+	// The number of operations currently in progress
+	InProgressOps = metrics.NewLabelledGauge("solrman.ops.inprogress", "The number of operations currently in progress", metricLabels)
+	// The count of live solr nodes.
+	SolrLiveNodes = metrics.NewLabelledGauge("solrman.livenode.count", "The number of problems that the solr cluster currently has", metricLabels)
+	// The number of problems that we currently have
+	ProblemCount = metrics.NewLabelledGauge("solrman.problem.count", "The number of problems that the solr cluster currently has", metricLabels)
+)
+
 // Runs the main solr management loop, never returns.
 func (s *SolrManService) RunSolrMan() {
 	s.setStatusOp("solrman is starting up")
 	clusterStateGolden := time.Now()
 	isAlerting := false
+
+	// The values for metrics in this cluster
+	labelVals := metrics.LabelValues{metricLabels[0]: s.ClusterName}
 
 	var nextDisabledNotice time.Time
 
@@ -57,11 +77,14 @@ func (s *SolrManService) RunSolrMan() {
 		first = false
 
 		if s.ZooClient.State() != zk.StateHasSession {
+			ZkIsConnected.Set(labelVals, 0)
 			s.setStatusOp("not connected to zk")
 			s.Logger.Warningf("not connected to zk")
 			continue
 		}
+		ZkIsConnected.Set(labelVals, 1)
 
+		InProgressOps.Set(labelVals, float64(s.countInProgressOps()))
 		if s.hasInProgressOps() {
 			s.clearStatusOp()
 			s.Logger.Debugf("in progress ops")
@@ -97,14 +120,18 @@ func (s *SolrManService) RunSolrMan() {
 		}
 		liveNodes, err := s.SolrMonitor.GetLiveNodes()
 		if err != nil {
+			SolrLiveNodes.Set(labelVals, 0)
 			s.setStatusOp("failed to retrieve live nodes")
 			s.Logger.Errorf("failed to retrieve live nodes: %s", err)
 			continue
 		}
+		SolrLiveNodes.Set(labelVals, float64(len(liveNodes)))
 		solrStatus := s.getLiveNodesStatuses(liveNodes, clusterState)
 
 		problems := solrcheck.FindClusterProblems(s.ZooClient, clusterState, liveNodes)
 		problems = append(problems, solrcheck.FindCloudStatusProblems(solrStatus, liveNodes)...)
+		// Set the number of problems in the current cluster
+		ProblemCount.Set(labelVals, float64(len(problems)))
 		if len(problems) > 0 {
 			for _, p := range problems {
 				s.Logger.Infof("PROBLEM: %v", p)
@@ -218,10 +245,14 @@ func (s *SolrManService) RunSolrMan() {
 	}
 }
 
-func (s *SolrManService) hasInProgressOps() bool {
+func (s *SolrManService) countInProgressOps() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.inProgressOps) > 0
+	return len(s.inProgressOps)
+}
+
+func (s *SolrManService) hasInProgressOps() bool {
+	return s.countInProgressOps() > 0
 }
 
 // For admin visibility
