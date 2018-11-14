@@ -16,11 +16,9 @@ package smservice
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -137,7 +135,7 @@ func (s *SolrManService) getNodeStatus(solrNode string, cluster solrmonitor.Clus
 	}
 
 	rsp := solrmanapi.SolrNodeStatus{
-		Hostname: gethostname(solrNode),
+		Hostname: smutil.GetHostname(solrNode),
 		NodeName: solrNode,
 		Cores:    make(map[string]*solrmanapi.SolrCoreStatus),
 	}
@@ -173,26 +171,6 @@ func (s *SolrManService) getNodeStatus(solrNode string, cluster solrmonitor.Clus
 	}
 
 	return &rsp, nil
-}
-
-// gethostname performs a DNS lookup on ip and returns the first hostname returned.  If the lookup fails, ip is
-// returned.
-func gethostname(solrNode string) string {
-	ip, _, _, err := parseNodeName(solrNode)
-	if err != nil {
-		return ""
-	}
-	if names, err := net.LookupAddr(ip); err != nil {
-		return ip // fall back to just using the IP
-	} else {
-		// Just return the first part of the hostname
-		hostname := names[0]
-		i := strings.Index(hostname, ".")
-		if i > -1 {
-			hostname = hostname[:i]
-		}
-		return hostname
-	}
 }
 
 func (s *SolrManService) Init() {

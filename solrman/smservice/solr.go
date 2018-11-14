@@ -17,12 +17,10 @@ package smservice
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -216,20 +214,6 @@ func (sc *SolrClient) SplitShard(collection, shard, requestId string) error {
 	return sc.doCollectionCall(params, &rsp)
 }
 
-// ParseNodeName parses a solr node identifier into an IP, a port, and a suffix.
-func parseNodeName(node string) (string, string, string, error) {
-	parts := strings.SplitN(node, "_", 2)
-	if len(parts) != 2 {
-		return "", "", "", errors.New("malformed: no underscore present")
-	}
-
-	if ip, port, err := net.SplitHostPort(parts[0]); err != nil {
-		return "", "", "", fmt.Errorf("%q is not a valid socket", parts[0])
-	} else {
-		return ip, port, parts[1], nil
-	}
-}
-
 // call Solr's collections API.
 func (sc *SolrClient) doCollectionCall(params url.Values, rsp HasErrorRsp) error {
 	// Pick a random live node
@@ -240,7 +224,7 @@ func (sc *SolrClient) doCollectionCall(params url.Values, rsp HasErrorRsp) error
 	solrNode := ln[rand.Intn(len(ln))]
 
 	// parse the node name to get IP, port, etc.
-	ip, port, root, err := parseNodeName(solrNode)
+	ip, port, root, err := smutil.ParseNodeName(solrNode)
 	if err != nil {
 		return smutil.Cherrf(err, "failed to parse node name")
 	}
@@ -258,7 +242,7 @@ func (sc *SolrClient) doCollectionCall(params url.Values, rsp HasErrorRsp) error
 // call Solr's core API on a specific node.
 func (sc *SolrClient) doCoreCall(solrNode string, params url.Values, rsp HasErrorRsp) error {
 	// parse the node name to get IP, port, etc.
-	ip, port, root, err := parseNodeName(solrNode)
+	ip, port, root, err := smutil.ParseNodeName(solrNode)
 	if err != nil {
 		return smutil.Cherrf(err, "failed to parse node name")
 	}

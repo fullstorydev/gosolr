@@ -70,6 +70,16 @@ func (s *ShardState) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// If a shard only has one host, returns that host.
+func (s *ShardState) FindSingleHostForShard() string {
+	if len(s.Replicas) == 1 {
+	        for _, replica := range s.Replicas {
+	                return replica.BaseUrl
+	        }
+	}
+	return ""
+}
+
 // Parse as uint, then cast to int32 to force wrapping into range.  This is what Solr does.
 func computeBounds(rangeStr string) bounds {
 	parts := strings.Split(rangeStr, "-")
