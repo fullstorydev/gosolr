@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package smservice
+package smstorage
 
 import (
 	"sort"
@@ -60,7 +60,7 @@ func (s *InMemoryStorage) GetInProgressOps() ([]solrmanapi.OpRecord, error) {
 	for _, op := range s.inProgress {
 		ret = append(ret, op)
 	}
-	sort.Sort(byStartedRecently(ret))
+	sort.Sort(solrmanapi.ByStartedRecently(ret))
 	return ret, nil
 }
 
@@ -69,7 +69,7 @@ func (s *InMemoryStorage) AddCompletedOp(op solrmanapi.OpRecord) error {
 	defer s.mu.Unlock()
 
 	s.completed = append(s.completed, op)
-	sort.Sort(byFinishedRecently(s.completed))
+	sort.Sort(solrmanapi.ByFinishedRecently(s.completed))
 	if len(s.completed) > NumStoredCompletedOps {
 		s.completed = s.completed[:NumStoredCompletedOps] // only keep the most recent NumStoredCompletedOps
 	}

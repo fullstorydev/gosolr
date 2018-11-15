@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/fullstorydev/gosolr/smutil"
+	"github.com/fullstorydev/gosolr/solrman/smstorage"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
 	"github.com/samuel/go-zookeeper/zk"
@@ -33,7 +34,7 @@ type SolrManService struct {
 	HttpClient  *http.Client
 	SolrMonitor *solrmonitor.SolrMonitor
 	ZooClient   *zk.Conn
-	Storage     SolrManStorage
+	Storage     smstorage.SolrManStorage
 	Logger      smutil.Logger // for "normal" logging
 	AlertLog    smutil.Logger // for "alert" logging that should notify engineers
 	Audit       Audit
@@ -43,18 +44,6 @@ type SolrManService struct {
 	inProgressOps map[string]solrmanapi.OpRecord
 	statusOp      *solrmanapi.OpRecord // when non-nil, provides admin visibility into solrman's state
 }
-
-type byStartedRecently []solrmanapi.OpRecord
-
-func (a byStartedRecently) Len() int           { return len(a) }
-func (a byStartedRecently) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byStartedRecently) Less(i, j int) bool { return a[i].StartedMs > a[j].StartedMs }
-
-type byFinishedRecently []solrmanapi.OpRecord
-
-func (a byFinishedRecently) Len() int           { return len(a) }
-func (a byFinishedRecently) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byFinishedRecently) Less(i, j int) bool { return a[i].FinishedMs > a[j].FinishedMs }
 
 // ClusterState responds with a struct containing info on the cores in SolrCloud.
 func (s *SolrManService) ClusterState() (*solrmanapi.SolrmanStatusResponse, error) {
@@ -87,8 +76,8 @@ func (s *SolrManService) ClusterState() (*solrmanapi.SolrmanStatusResponse, erro
 		}
 	}()
 
-	sort.Sort(byFinishedRecently(rsp.CompletedSolrOps))
-	sort.Sort(byStartedRecently(rsp.InProgressSolrOps))
+	sort.Sort(solrmanapi.ByFinishedRecently(rsp.CompletedSolrOps))
+	sort.Sort(solrmanapi.ByStartedRecently(rsp.InProgressSolrOps))
 	return &rsp, nil
 }
 

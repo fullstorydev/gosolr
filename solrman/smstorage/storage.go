@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package smservice
+package smstorage
 
 import (
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
@@ -42,9 +42,9 @@ type SolrManStorage interface {
 	IsDisabled() bool       // if true, solrman is entirely disabled
 	SetDisabled(bool) error // disable solrman due to unrecoverable error completing an op
 
-	IsSplitsDisabled() bool // if true, don't do splits
+	IsSplitsDisabled() bool       // if true, don't do splits
 	SetSplitsDisabled(bool) error // disable splits
 
-	IsMovesDisabled() bool  // if true, don't do moves
+	IsMovesDisabled() bool       // if true, don't do moves
 	SetMovesDisabled(bool) error // disable moves
 }

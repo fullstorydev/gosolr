@@ -14,7 +14,7 @@
 
 // +build integration
 
-package smservice
+package smstorage
 
 import (
 	"fmt"
@@ -70,8 +70,8 @@ func setup(t *testing.T) (*ZkStorage, *testutil) {
 	splits := strings.Split(callerFunc.Name(), "/")
 	callerName := splits[len(splits)-1]
 	callerName = strings.Replace(callerName, ".", "_", -1)
-	if !strings.HasPrefix(callerName, "smservice_Test") {
-		t.Fatalf("Unexpected callerName: %s should start with smservice_Test", callerName)
+	if !strings.HasPrefix(callerName, "smstorage_Test") {
+		t.Fatalf("Unexpected callerName: %s should start with smstorage_Test", callerName)
 	}
 
 	root := "/" + callerName

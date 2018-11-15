@@ -32,6 +32,7 @@ import (
 
 	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/smservice"
+	"github.com/fullstorydev/gosolr/solrman/smstorage"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
 	"github.com/samuel/go-zookeeper/zk"
@@ -91,7 +92,7 @@ func run(logger *log.Logger) error {
 
 	httpClient := &http.Client{}
 
-	storage, err := smservice.NewZkStorage(zooClient, solrmanZkPath, smLogger)
+	storage, err := smstorage.NewZkStorage(zooClient, solrmanZkPath, smLogger)
 	if err != nil {
 		return smutil.Cherrf(err, "Failed to open zk storage")
 	}

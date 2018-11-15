@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package smservice
+package smstorage
 
 import (
 	"bytes"
@@ -126,7 +126,7 @@ func (s *ZkStorage) GetInProgressOps() ([]solrmanapi.OpRecord, error) {
 
 		ret = append(ret, op)
 	}
-	sort.Sort(byStartedRecently(ret))
+	sort.Sort(solrmanapi.ByStartedRecently(ret))
 	return ret, nil
 }
 
@@ -202,7 +202,7 @@ func (s *ZkStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, error) {
 
 		ret = append(ret, op)
 	}
-	sort.Sort(byFinishedRecently(ret))
+	sort.Sort(solrmanapi.ByFinishedRecently(ret))
 	if len(ret) > count {
 		ret = ret[:count]
 	}

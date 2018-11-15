@@ -51,3 +51,15 @@ func (r *OpRecord) String() string {
 func (r *OpRecord) Key() string {
 	return fmt.Sprintf("SolrOp:%s:%s", r.Collection, r.Shard)
 }
+
+type ByStartedRecently []OpRecord
+
+func (a ByStartedRecently) Len() int           { return len(a) }
+func (a ByStartedRecently) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByStartedRecently) Less(i, j int) bool { return a[i].StartedMs > a[j].StartedMs }
+
+type ByFinishedRecently []OpRecord
+
+func (a ByFinishedRecently) Len() int           { return len(a) }
+func (a ByFinishedRecently) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByFinishedRecently) Less(i, j int) bool { return a[i].FinishedMs > a[j].FinishedMs }
