@@ -15,46 +15,56 @@
 package smutil
 
 import (
-        "errors"
-        "fmt"
-        "net"
-        "strings"
+	"errors"
+	"fmt"
+	"net"
+	"strings"
 
-        "github.com/samuel/go-zookeeper/zk"
+	"github.com/samuel/go-zookeeper/zk"
 )
 
 // ParseNodeName parses a solr node identifier into an IP, a port, and a suffix.
 func ParseNodeName(node string) (string, string, string, error) {
-        parts := strings.SplitN(node, "_", 2)
-        if len(parts) != 2 {
-                return "", "", "", errors.New("malformed: no underscore present")
-        }
+	parts := strings.SplitN(node, "_", 2)
+	if len(parts) != 2 {
+		return "", "", "", errors.New("malformed: no underscore present")
+	}
 
-        if ip, port, err := net.SplitHostPort(parts[0]); err != nil {
-                return "", "", "", fmt.Errorf("%q is not a valid socket", parts[0])
-        } else {
-                return ip, port, parts[1], nil
-        }
+	if ip, port, err := net.SplitHostPort(parts[0]); err != nil {
+		return "", "", "", fmt.Errorf("%q is not a valid socket", parts[0])
+	} else {
+		return ip, port, parts[1], nil
+	}
 }
 
-// gethostname performs a DNS lookup on ip and returns the first hostname returned.  If the lookup fails, ip is
-// returned.
+// GetHostname performs an address lookup on the ip portion of e.g. `127.0.0.1:8983_solr` and returns the first hostname returned.
+// If the lookup fails, then ip is returned.
 func GetHostname(solrNode string) string {
-        ip, _, _, err := ParseNodeName(solrNode)
-        if err != nil {
-                return ""
-        }
-        if names, err := net.LookupAddr(ip); err != nil {
-                return ip // fall back to just using the IP
-        } else {
-                // Just return the first part of the hostname
-                hostname := names[0]
-                i := strings.Index(hostname, ".")
-                if i > -1 {
-                        hostname = hostname[:i]
-                }
-                return hostname
-        }
+	ip, _, _, err := ParseNodeName(solrNode)
+	if err != nil {
+		return ""
+	}
+	if names, err := net.LookupAddr(ip); err != nil {
+		return ip // fall back to just using the IP
+	} else {
+		// Just return the first part of the hostname
+		hostname := names[0]
+		i := strings.Index(hostname, ".")
+		if i > -1 {
+			hostname = hostname[:i]
+		}
+		return hostname
+	}
+}
+
+// ResolveNode performs a DNS resolve on the hostname and return an IP on ip and returns the first hostname returned.
+// If the lookup fails, hostName is returned.
+func ResolveNode(hostName string) string {
+	ip, err := net.ResolveIPAddr("tcp", hostName)
+	if err != nil {
+		return hostName
+	}
+	return ip.String()
 }
 
 // delete the specified path and its children, recursively.

@@ -73,9 +73,9 @@ func (s *ShardState) UnmarshalJSON(data []byte) error {
 // If a shard only has one host, returns that host.
 func (s *ShardState) FindSingleHostForShard() string {
 	if len(s.Replicas) == 1 {
-	        for _, replica := range s.Replicas {
-	                return replica.BaseUrl
-	        }
+		for _, replica := range s.Replicas {
+			return replica.BaseUrl
+		}
 	}
 	return ""
 }
