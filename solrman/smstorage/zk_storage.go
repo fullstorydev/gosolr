@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"sort"
+	"sync"
 
 	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
@@ -106,26 +107,7 @@ func (s *ZkStorage) GetInProgressOps() ([]solrmanapi.OpRecord, error) {
 		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
 	}
 
-	var ret []solrmanapi.OpRecord
-	for _, child := range children {
-		childPath := path + "/" + child
-		data, _, err := s.conn.Get(childPath)
-		if err == zk.ErrNoNode {
-			continue // could be a valid race condition, just ignore this child
-		} else if err != nil {
-			return nil, smutil.Cherrf(err, "could not get %s in ZK", childPath)
-		}
-
-		op := solrmanapi.OpRecord{}
-		if err := json.NewDecoder(bytes.NewReader(data)).Decode(&op); err != nil {
-			if s.logger != nil {
-				s.logger.Errorf("In progress operation found at %s in ZK failed to parse: error=%s\ndata=%s", childPath, err, string(data))
-			}
-			continue
-		}
-
-		ret = append(ret, op)
-	}
+	ret := s.fetchOps(path, children)
 	sort.Sort(solrmanapi.ByStartedRecently(ret))
 	return ret, nil
 }
@@ -182,26 +164,7 @@ func (s *ZkStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, error) {
 		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
 	}
 
-	var ret []solrmanapi.OpRecord
-	for _, child := range children {
-		childPath := path + "/" + child
-		data, _, err := s.conn.Get(childPath)
-		if err == zk.ErrNoNode {
-			continue // could be a valid race condition, just ignore this child
-		} else if err != nil {
-			return nil, smutil.Cherrf(err, "could not get %s in ZK", childPath)
-		}
-
-		op := solrmanapi.OpRecord{}
-		if err := json.NewDecoder(bytes.NewReader(data)).Decode(&op); err != nil {
-			if s.logger != nil {
-				s.logger.Errorf("In progress operation found at %s in ZK failed to parse: error=%s\ndata=%s", childPath, err, string(data))
-			}
-			continue
-		}
-
-		ret = append(ret, op)
-	}
+	ret := s.fetchOps(path, children)
 	sort.Sort(solrmanapi.ByFinishedRecently(ret))
 	if len(ret) > count {
 		ret = ret[:count]
@@ -304,6 +267,44 @@ func (s *ZkStorage) SetMovesDisabled(disabled bool) error {
 		}
 	}
 	return nil
+}
+
+func (s *ZkStorage) fetchOps(path string, children []string) []solrmanapi.OpRecord {
+	ch := make(chan solrmanapi.OpRecord, len(children))
+	var wg sync.WaitGroup
+	for _, child := range children {
+		wg.Add(1)
+		go func(child string) {
+			defer wg.Done()
+			childPath := path + "/" + child
+			data, _, err := s.conn.Get(childPath)
+			if err == zk.ErrNoNode {
+				return // could be a valid race condition, just ignore this child
+			} else if err != nil {
+				if s.logger != nil {
+					s.logger.Errorf("could not get %s in ZK: %s", childPath, err)
+				}
+				return
+			}
+
+			op := solrmanapi.OpRecord{}
+			if err := json.NewDecoder(bytes.NewReader(data)).Decode(&op); err != nil {
+				if s.logger != nil {
+					s.logger.Errorf("In progress operation found at %s in ZK failed to parse: error=%s\ndata=%s", childPath, err, string(data))
+				}
+				return
+			}
+			ch <- op
+		}(child)
+	}
+	wg.Wait()
+	close(ch)
+
+	ret := make([]solrmanapi.OpRecord, 0, len(children))
+	for op := range ch {
+		ret = append(ret, op)
+	}
+	return ret
 }
 
 func jsonString(op *solrmanapi.OpRecord) string {
