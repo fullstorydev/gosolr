@@ -183,14 +183,21 @@ func (s *SolrManService) Init() {
 		return
 	}
 
+	movesDisabled := s.Storage.IsDisabled() || s.Storage.IsMovesDisabled()
+	splitsDisabled := s.Storage.IsDisabled() || s.Storage.IsSplitsDisabled()
 	for _, op := range inProgressOps {
 		s.inProgressOps[op.Key()] = op
-		s.Logger.Infof("Resuming from storage: %s", op)
 		switch op.Operation {
 		case solrmanapi.OpMoveShard:
-			go s.runMoveOperation(op)
+			if !movesDisabled {
+				s.Logger.Infof("Resuming from storage: %s", op.String())
+				go s.runMoveOperation(op)
+			}
 		case solrmanapi.OpSplitShard:
-			go s.runSplitOperation(op)
+			if !splitsDisabled {
+				s.Logger.Infof("Resuming from storage: %s", op.String())
+				go s.runSplitOperation(op)
+			}
 		default:
 			s.Logger.Errorf("In progress operation found in storage with unknown op type: %+v", op)
 			delete(s.inProgressOps, op.Key())
