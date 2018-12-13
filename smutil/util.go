@@ -60,7 +60,7 @@ func GetHostname(solrNode string) string {
 // ResolveNode performs a DNS resolve on the hostname and return an IP on ip and returns the first hostname returned.
 // If the lookup fails, hostName is returned.
 func ResolveNode(hostName string) string {
-	ip, err := net.ResolveIPAddr("tcp", hostName)
+	ip, err := net.ResolveIPAddr("ip4", hostName)
 	if err != nil {
 		return hostName
 	}
