@@ -14,6 +14,7 @@
 
 package solrmanapi
 
+// TODO: rename 'NodeStatuses'
 type SolrCloudStatus map[string]*SolrNodeStatus // keys are hostnames
 
 type SolrNodeStatus struct {
