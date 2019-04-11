@@ -225,3 +225,18 @@ func TestZkStorage_IsSplitsDisabled(t *testing.T) {
 		t.Error("expected splits to be disabled")
 	}
 }
+
+func TestZkStorage_IsStabbingEnabled(t *testing.T) {
+	s, testutil := setup(t)
+	defer testutil.teardown()
+
+	if s.IsStabbingEnabled() {
+		t.Error("expected stabbing to be disabled")
+	}
+
+	testutil.create(s.enableStabbingPath())
+
+	if !s.IsStabbingEnabled() {
+		t.Error("expected stabbing to be enabled")
+	}
+}

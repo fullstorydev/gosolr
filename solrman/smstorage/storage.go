@@ -47,4 +47,7 @@ type SolrManStorage interface {
 
 	IsMovesDisabled() bool       // if true, don't do moves
 	SetMovesDisabled(bool) error // disable moves
+
+	IsStabbingEnabled() bool       // if true, Solrman will automatically restart problematic nodes
+	SetStabbingEnabled(bool) error // enable auutomatic node restarts
 }

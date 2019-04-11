@@ -75,6 +75,10 @@ func (s *ZkStorage) disableMovesPath() string {
 	return s.root + "/disable_moves"
 }
 
+func (s *ZkStorage) enableStabbingPath() string {
+	return s.root + "/enable_stabbing"
+}
+
 func (s *ZkStorage) AddInProgressOp(op solrmanapi.OpRecord) error {
 	path := s.inProgressPath() + "/" + op.Key()
 	data := []byte(jsonString(&op))
@@ -256,6 +260,34 @@ func (s *ZkStorage) IsMovesDisabled() bool {
 func (s *ZkStorage) SetMovesDisabled(disabled bool) error {
 	path := s.disableMovesPath()
 	if disabled {
+		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
+		if err != nil && err != zk.ErrNodeExists {
+			return smutil.Cherrf(err, "could not create %s in ZK", path)
+		}
+	} else {
+		err := s.conn.Delete(path, -1)
+		if err != nil && err != zk.ErrNoNode {
+			return smutil.Cherrf(err, "could not delete %s in ZK", path)
+		}
+	}
+	return nil
+}
+
+func (s *ZkStorage) IsStabbingEnabled() bool {
+	path := s.enableStabbingPath()
+	exists, _, err := s.conn.Exists(path)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
+		}
+		return true // assume disabled if we have an error
+	}
+	return exists
+}
+
+func (s *ZkStorage) SetStabbingEnabled(enabled bool) error {
+	path := s.enableStabbingPath()
+	if enabled {
 		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
 		if err != nil && err != zk.ErrNodeExists {
 			return smutil.Cherrf(err, "could not create %s in ZK", path)

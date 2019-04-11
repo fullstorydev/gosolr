@@ -23,12 +23,13 @@ import (
 
 // Reference implementation for testing, don't use in production.
 type InMemoryStorage struct {
-	mu             sync.RWMutex
-	disabled       bool
-	splitsDisabled bool
-	movesDisables  bool
-	inProgress     map[string]solrmanapi.OpRecord
-	completed      []solrmanapi.OpRecord
+	mu              sync.RWMutex
+	disabled        bool
+	splitsDisabled  bool
+	movesDisabled   bool
+	stabbingEnabled bool
+	inProgress      map[string]solrmanapi.OpRecord
+	completed       []solrmanapi.OpRecord
 }
 
 var _ SolrManStorage = &InMemoryStorage{}
@@ -128,13 +129,28 @@ func (s *InMemoryStorage) IsMovesDisabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.movesDisables
+	return s.movesDisabled
 }
 
 func (s *InMemoryStorage) SetMovesDisabled(disabled bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.movesDisables = disabled
+	s.movesDisabled = disabled
+	return nil
+}
+
+func (s *InMemoryStorage) IsStabbingEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.stabbingEnabled
+}
+
+func (s *InMemoryStorage) SetStabbingEnabled(enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.stabbingEnabled = enabled
 	return nil
 }
