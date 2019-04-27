@@ -26,7 +26,7 @@ type SolrNodeStatus struct {
 type SolrCoreStatus struct {
 	Name         string
 	NodeName     string // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
-	Collection   string // collection name (which is our case is always [orgId]-v[version])
+	Collection   string // collection name (e.g. "1A00E" or "thefullstory.com")
 	Shard        string // shard name (e.g. "shard1")
 	ShardState   string // e.g. "active", "inactive"
 	Range        string // // e.g. "80000000-b332ffff"
