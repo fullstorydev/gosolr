@@ -280,7 +280,7 @@ func (s *ZkStorage) IsStabbingEnabled() bool {
 		if s.logger != nil {
 			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
 		}
-		return true // assume disabled if we have an error
+		return false // assume disabled if we have an error
 	}
 	return exists
 }
