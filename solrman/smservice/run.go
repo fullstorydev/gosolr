@@ -16,7 +16,6 @@ package smservice
 
 import (
 	"fmt"
-	"fs/metrics"
 	"runtime"
 	"sort"
 	"strings"
@@ -27,6 +26,8 @@ import (
 	"github.com/fullstorydev/gosolr/solrman/smmodel"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/samuel/go-zookeeper/zk"
+
+	"fs/metrics"
 )
 
 const (
@@ -37,7 +38,7 @@ const (
 	splitShardsWithDocCount       = 4000000          // Split shards with doc count > this
 	allSplitsDocCountTrigger      = 4004000          // But don't do any splits until at least one shard > this
 	allowedMinToMaxShardSizeRatio = 0.2              // Ratio of smallest shard to biggest shard < this then warn about imbalance
-	maxShardsPerMachine           = 16               // Maximum number of shards per machine in the cluster
+	maxShardsPerMachine           = 8                // Maximum number of shards per machine in the cluster
 	disabledNoticePeriod          = time.Hour * 6    // Duration between notices (to alert logger) that solrman is still disabled
 	waitBeforeAlerting            = time.Minute * 5  // Time before solrman sends a slack notification about not being golden
 )
