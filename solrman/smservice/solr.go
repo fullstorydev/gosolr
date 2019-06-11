@@ -224,13 +224,13 @@ func (sc *SolrClient) doCollectionCall(params url.Values, rsp HasErrorRsp) error
 	solrNode := ln[rand.Intn(len(ln))]
 
 	// parse the node name to get IP, port, etc.
-	ip, port, root, err := smutil.ParseNodeName(solrNode)
+	ip, port, err := smutil.ParseNodeName(solrNode)
 	if err != nil {
 		return smutil.Cherrf(err, "failed to parse node name")
 	}
 
 	params.Add("wt", "json")
-	urls := fmt.Sprintf("http://%s:%s/%s/admin/collections?%s", ip, port, root, params.Encode())
+	urls := fmt.Sprintf("http://%s:%s/solr/admin/collections?%s", ip, port, params.Encode())
 
 	if err := sc.httpGetJson(urls, rsp); err != nil {
 		return smutil.Cherrf(err, "failed to query %s with params: %s", urls, params)
@@ -242,13 +242,13 @@ func (sc *SolrClient) doCollectionCall(params url.Values, rsp HasErrorRsp) error
 // call Solr's core API on a specific node.
 func (sc *SolrClient) doCoreCall(solrNode string, params url.Values, rsp HasErrorRsp) error {
 	// parse the node name to get IP, port, etc.
-	ip, port, root, err := smutil.ParseNodeName(solrNode)
+	ip, port, err := smutil.ParseNodeName(solrNode)
 	if err != nil {
 		return smutil.Cherrf(err, "failed to parse node name")
 	}
 
 	params.Add("wt", "json")
-	urls := fmt.Sprintf("http://%s:%s/%s/admin/cores?%s", ip, port, root, params.Encode())
+	urls := fmt.Sprintf("http://%s:%s/solr/admin/cores?%s", ip, port, params.Encode())
 
 	if err := sc.httpGetJson(urls, rsp); err != nil {
 		return smutil.Cherrf(err, "failed to query %s with params: %s", urls, params)

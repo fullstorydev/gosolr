@@ -15,32 +15,36 @@
 package smutil
 
 import (
-	"errors"
 	"fmt"
 	"net"
+        "strconv"
 	"strings"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
 
 // ParseNodeName parses a solr node identifier into an IP, a port, and a suffix.
-func ParseNodeName(node string) (string, string, string, error) {
+func ParseNodeName(node string) (string, string, error) {
 	parts := strings.SplitN(node, "_", 2)
 	if len(parts) != 2 {
-		return "", "", "", errors.New("malformed: no underscore present")
+		return "", "", fmt.Errorf("malformed solr node identifier: no underscore present in %s", node)
 	}
 
 	if ip, port, err := net.SplitHostPort(parts[0]); err != nil {
-		return "", "", "", fmt.Errorf("%q is not a valid socket", parts[0])
+		return "", "", fmt.Errorf("%q is not a valid socket", parts[0])
 	} else {
-		return ip, port, parts[1], nil
+                _, err := strconv.ParseUint(port, 10, 16)
+                if err != nil {
+                        return "", "", fmt.Errorf("%s is not a valid port", port)
+                }
+		return ip, port, nil
 	}
 }
 
 // GetHostname performs an address lookup on the ip portion of e.g. `127.0.0.1:8983_solr` and returns the first hostname returned.
 // If the lookup fails, then ip is returned.
 func GetHostname(solrNode string) string {
-	ip, _, _, err := ParseNodeName(solrNode)
+	ip, _, err := ParseNodeName(solrNode)
 	if err != nil {
 		return ""
 	}
