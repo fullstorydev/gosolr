@@ -77,12 +77,15 @@ func (s *InMemoryStorage) AddCompletedOp(op solrmanapi.OpRecord) error {
 	return nil
 }
 
+// A negative count input indicates to return all completed ops.
 func (s *InMemoryStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	ret := s.completed
-	if len(ret) > count {
+	if count < 0 {
+                return ret, nil
+        } else if len(ret) > count {
 		ret = ret[:count]
 	}
 	return ret, nil
