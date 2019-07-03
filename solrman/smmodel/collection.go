@@ -16,18 +16,21 @@ package smmodel
 
 import "fmt"
 
+// unique id of a core for internal tracking, 0-based and contiguous so we can store in slices by id
+type collectionId int
+
 type Collection struct {
-	Name  string  `json:"name"`
-	Docs  float64 `json:"docs"`
-	Size  float64 `json:"size"` // in bytes
+	Name string `json:"name"`
+
+	id    collectionId
 	cores []*Core
 
-	cost float64 // cached cost
+	// cached balance info
+	balanceInfo *balanceInfo
 }
 
 func (c *Collection) Add(core *Core) {
-	c.Docs += core.Docs
-	c.Size += core.Size
+	core.collectionId = c.id
 	c.cores = append(c.cores, core)
 }
 
@@ -46,12 +49,10 @@ func (c *Collection) Without(core *Core) *Collection {
 		panic(fmt.Sprintf("core %s not found in collection %s", core.Name, c.Name))
 	}
 
-	return &Collection{
-		Name:  c.Name,
-		Docs:  c.Docs - core.Docs,
-		Size:  c.Size - core.Size,
-		cores: newCores,
-	}
+	cCopy := *c
+	cCopy.cores = newCores
+	cCopy.balanceInfo = nil
+	return &cCopy
 }
 
 func (c *Collection) Replace(core *Core, newCore *Core) *Collection {
@@ -70,10 +71,45 @@ func (c *Collection) Replace(core *Core, newCore *Core) *Collection {
 		panic(fmt.Sprintf("core %s not found in collection %s", core.Name, c.Name))
 	}
 
-	return &Collection{
-		Name:  c.Name,
-		Docs:  c.Docs - core.Docs + newCore.Docs,
-		Size:  c.Size - core.Size + newCore.Size,
-		cores: newCores,
+	cCopy := *c
+	cCopy.cores = newCores
+	cCopy.balanceInfo = nil
+	return &cCopy
+
+}
+
+type balanceInfo struct {
+	maxCoresPerNode int
+	coresPerNode    []int
+	score           int64
+	coll            *Collection
+}
+
+func (c *Collection) balance(nodeCount int) balanceInfo {
+	if c.balanceInfo == nil {
+		// integral math: we want e.g. 12/12 = 1 but 13/12 = 2; so
+		// (12-1)/12 = 0+1, (13-1)/12 = 1+1
+		maxCoresPerNode := (len(c.cores)-1)/nodeCount + 1
+
+		coresPerNode := make([]int, nodeCount)
+		for _, core := range c.cores {
+			coresPerNode[core.nodeId]++
+		}
+
+		// sum of squares, 10 extra cores on one machine is way worse than 1 extra core on 10 machines.
+		var score int64
+		for _, v := range coresPerNode {
+			if v > maxCoresPerNode {
+				score += int64((v - maxCoresPerNode) * (v - maxCoresPerNode))
+			}
+		}
+
+		c.balanceInfo = &balanceInfo{
+			maxCoresPerNode: maxCoresPerNode,
+			coresPerNode:    coresPerNode,
+			score:           score,
+			coll:            c,
+		}
 	}
+	return *c.balanceInfo
 }

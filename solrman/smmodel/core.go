@@ -14,13 +14,18 @@
 
 package smmodel
 
+// unique id of a core for internal tracking, 0-based and contiguous so we can store in slices by id
+type coreId int
+
 type Core struct {
-	Name       string  `json:"name"`
-	Collection string  `json:"collection"`
-	Shard      string  `json:"shard"`
-	Docs       float64 `json:"docs"`
-	Size       float64 `json:"size"` // in bytes
-	nodeId     int     // the node I currently belong to
+	Name       string `json:"name"`
+	Collection string `json:"collection"`
+	Shard      string `json:"shard"`
+	Size       int64  `json:"size"` // in bytes
+
+	id           coreId
+	collectionId collectionId // the collection i belong to
+	nodeId       nodeId       // the node I currently belong to
 }
 
 func (c *Core) shardName() string {

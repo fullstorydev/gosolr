@@ -15,6 +15,7 @@
 package smmodel
 
 import (
+	"fs/fsmath"
 	"io/ioutil"
 	"strconv"
 	"strings"
@@ -24,7 +25,7 @@ import (
 func TestEmptyModel(t *testing.T) {
 	t.Parallel()
 	m := &Model{}
-	moves := m.ComputeBestMoves(1, 1)
+	moves := m.ComputeBestMoves(1)
 	if len(moves) != 0 {
 		t.Errorf("Expected no moves")
 	}
@@ -33,7 +34,7 @@ func TestEmptyModel(t *testing.T) {
 func TestTinyModel(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(tinyModel)
-	moves := m.ComputeBestMoves(1, 1)
+	moves := m.ComputeBestMoves(1)
 	if len(moves) != 0 {
 		t.Errorf("Expected no moves")
 	}
@@ -42,8 +43,19 @@ func TestTinyModel(t *testing.T) {
 func TestSmallModel(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(smallModel)
-	moves := m.ComputeBestMoves(1, 3)
+	moves := m.ComputeBestMoves(3)
 	assertEquals(t, []string{
+		`{"core":"A_shard1_0_replica2","collection":"A","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-2.node"}`,
+		`{"core":"B_shard1_replica1","collection":"B","shard":"shard1","from_node":"solr-2.node","to_node":"solr-1.node"}`,
+	}, moves)
+}
+
+func TestSmallModel_EvacuatingNodes(t *testing.T) {
+	t.Parallel()
+	m := createTestModel(smallModel, "solr-1.node")
+	moves := m.ComputeBestMoves(3)
+	assertEquals(t, []string{
+		`{"core":"A_shard1_0_replica2","collection":"A","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-2.node"}`,
 		`{"core":"A_shard1_1_replica2","collection":"A","shard":"shard1_1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
 	}, moves)
 }
@@ -51,7 +63,7 @@ func TestSmallModel(t *testing.T) {
 func TestDeletesExtraReplicas(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(extraReplicaModel)
-	moves := m.ComputeBestMoves(1, 3)
+	moves := m.ComputeBestMoves(3)
 	assertEquals(t, []string{
 		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-2.node","to_node":"solr-1.node"}`,
 	}, moves)
@@ -60,7 +72,7 @@ func TestDeletesExtraReplicas(t *testing.T) {
 func TestCollectionBalanceModel(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(collectionBalanceModel)
-	moves := m.ComputeBestMoves(1, 3)
+	moves := m.ComputeBestMoves(3)
 
 	assertEquals(t, []string{
 		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
@@ -76,11 +88,13 @@ func TestLargeModel(t *testing.T) {
 
 	// TODO(jh): review results
 	m := createTestModel(string(data))
-	moves := m.ComputeBestMoves(1, 3)
+	moves := m.ComputeBestMoves(5)
 	assertEquals(t, []string{
-		`{"core":"coll12_shard1_0_replica1","collection":"coll12","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-9.node"}`,
-		`{"core":"coll12_shard1_1_replica1","collection":"coll12","shard":"shard1_1","from_node":"solr-1.node","to_node":"solr-10.node"}`,
-		`{"core":"coll3_shard1_0_replica1","collection":"coll3","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-9.node"}`,
+		`{"core":"collD_shard1_0_0_0_replica1","collection":"collD","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
+		`{"core":"collD_shard1_0_0_1_replica1","collection":"collD","shard":"shard1_0_0_1","from_node":"solr-1.node","to_node":"solr-9.node"}`,
+		`{"core":"collD_shard1_0_1_0_replica1","collection":"collD","shard":"shard1_0_1_0","from_node":"solr-1.node","to_node":"solr-7.node"}`,
+		`{"core":"coll3F_shard1_0_0_0_replica1","collection":"coll3F","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
+		`{"core":"coll8A_shard1_0_1_0_replica1","collection":"coll8A","shard":"shard1_0_1_0","from_node":"solr-4.node","to_node":"solr-6.node"}`,
 	}, moves)
 }
 
@@ -93,56 +107,53 @@ func TestLargeModel_EvacuatingNodes(t *testing.T) {
 
 	// TODO(jh): revamp this test; I'm also not sure if the underlying evacuate nodes logic is working right at all.
 	m := createTestModel(string(data), "solr-8.node", "solr-9.node")
-	moves := m.ComputeBestMoves(1, 50)
+	moves := m.ComputeBestMoves(20)
 
 	// Should be just evacuation moves.
 	assertEquals(t, []string{
-		`{"core":"coll23_shard1_1_0_1_1_replica2","collection":"coll23","shard":"shard1_1_0_1_1","from_node":"solr-8.node","to_node":"solr-10.node"}`,
-		`{"core":"coll23_shard1_1_0_1_0_replica2","collection":"coll23","shard":"shard1_1_0_1_0","from_node":"solr-8.node","to_node":"solr-7.node"}`,
+		`{"core":"coll23_shard1_1_0_1_1_replica2","collection":"coll23","shard":"shard1_1_0_1_1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
+		`{"core":"coll23_shard1_1_0_1_0_replica2","collection":"coll23","shard":"shard1_1_0_1_0","from_node":"solr-8.node","to_node":"solr-6.node"}`,
 		`{"core":"coll7A_shard1_1_1_replica2","collection":"coll7A","shard":"shard1_1_1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
 		`{"core":"coll32_shard1_1_0_1_1_1_replica1","collection":"coll32","shard":"shard1_1_0_1_1_1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
-		`{"core":"coll13_shard1_0_1_1_replica1","collection":"coll13","shard":"shard1_0_1_1","from_node":"solr-8.node","to_node":"solr-10.node"}`,
-		`{"core":"coll15_shard1_1_1_1_1_0_replica2","collection":"coll15","shard":"shard1_1_1_1_1_0","from_node":"solr-9.node","to_node":"solr-7.node"}`,
-		`{"core":"coll32_shard1_1_1_1_0_0_replica1","collection":"coll32","shard":"shard1_1_1_1_0_0","from_node":"solr-9.node","to_node":"solr-1.node"}`,
-		`{"core":"coll2C_shard1_1_1_1_1_replica2","collection":"coll2C","shard":"shard1_1_1_1_1","from_node":"solr-9.node","to_node":"solr-7.node"}`,
-		`{"core":"coll3E_shard1_1_0_1_1_replica2","collection":"coll3E","shard":"shard1_1_0_1_1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
-		`{"core":"coll15_shard1_1_1_1_1_1_replica2","collection":"coll15","shard":"shard1_1_1_1_1_1","from_node":"solr-9.node","to_node":"solr-1.node"}`,
-		`{"core":"coll3AD_shard1_replica1","collection":"coll3AD","shard":"shard1","from_node":"solr-8.node","to_node":"solr-1.node"}`,
+		`{"core":"coll13_shard1_0_1_1_replica1","collection":"coll13","shard":"shard1_0_1_1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
+		`{"core":"coll3AD_shard1_replica1","collection":"coll3AD","shard":"shard1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
 		`{"core":"coll3AC_shard1_replica2","collection":"coll3AC","shard":"shard1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
-		`{"core":"coll3AE_shard1_replica1","collection":"coll3AE","shard":"shard1","from_node":"solr-8.node","to_node":"solr-1.node"}`,
+		`{"core":"coll3AE_shard1_replica1","collection":"coll3AE","shard":"shard1","from_node":"solr-8.node","to_node":"solr-6.node"}`,
+		`{"core":"coll15_shard1_1_1_1_1_0_replica2","collection":"coll15","shard":"shard1_1_1_1_1_0","from_node":"solr-9.node","to_node":"solr-6.node"}`,
+		`{"core":"coll32_shard1_1_1_1_0_0_replica1","collection":"coll32","shard":"shard1_1_1_1_0_0","from_node":"solr-9.node","to_node":"solr-6.node"}`,
+		`{"core":"coll2C_shard1_1_1_1_1_replica2","collection":"coll2C","shard":"shard1_1_1_1_1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
+		`{"core":"coll3E_shard1_1_0_1_1_replica2","collection":"coll3E","shard":"shard1_1_0_1_1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
+		`{"core":"coll15_shard1_1_1_1_1_1_replica2","collection":"coll15","shard":"shard1_1_1_1_1_1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
 		`{"core":"coll3B5_shard1_replica1","collection":"coll3B5","shard":"shard1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
-		`{"core":"coll3B4_shard1_replica1","collection":"coll3B4","shard":"shard1","from_node":"solr-9.node","to_node":"solr-5.node"}`,
-		`{"core":"coll3B0_shard1_replica1","collection":"coll3B0","shard":"shard1","from_node":"solr-9.node","to_node":"solr-7.node"}`,
-	}, moves)
+		`{"core":"coll3B4_shard1_replica1","collection":"coll3B4","shard":"shard1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
+		`{"core":"coll3B0_shard1_replica1","collection":"coll3B0","shard":"shard1","from_node":"solr-9.node","to_node":"solr-6.node"}`,
+	}, moves[:16])
 
 	// Execute the moves.
 	curModel := m
-	for _, move := range moves {
-		// We have to re-resolve the core and node in the current model.
-		core := curModel.FindCore(move.Core.Name)
-		node := curModel.FindNode(move.ToNode.Name)
-		curModel = curModel.WithMove(core, node)
+	for _, move := range moves[:16] {
+		curModel = curModel.WithMove(move)
 	}
 
 	// After evacuations are done, normal moves should commence.
-	moves = curModel.ComputeBestMoves(1, 3)
+	moves = curModel.ComputeBestMoves(3)
 	assertEquals(t, []string{
-		`{"core":"coll12_shard1_0_replica1","collection":"coll12","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-10.node"}`,
-		`{"core":"coll12_shard1_1_replica1","collection":"coll12","shard":"shard1_1","from_node":"solr-1.node","to_node":"solr-7.node"}`,
-		`{"core":"coll3_shard1_0_replica1","collection":"coll3","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-10.node"}`,
+		`{"core":"collD_shard1_0_0_0_replica1","collection":"collD","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
+		`{"core":"collD_shard1_0_0_1_replica1","collection":"collD","shard":"shard1_0_0_1","from_node":"solr-1.node","to_node":"solr-7.node"}`,
+		`{"core":"collD_shard1_0_1_0_replica1","collection":"collD","shard":"shard1_0_1_0","from_node":"solr-1.node","to_node":"solr-10.node"}`,
 	}, moves)
 
 }
 
 func assertEquals(t *testing.T, expected []string, actual []Move) {
 	t.Helper()
-	if len(expected) != len(actual) {
-		t.Errorf("expected: %v, actual: %v", expected, actual)
-		return
-	}
-	for i := range expected {
-		if actual[i].String() != expected[i] {
-			t.Errorf("at index: %v, expected: %v, actual: %v", i, expected[i], actual[i])
+	for i, c := 0, fsmath.MaxInt(len(expected), len(actual)); i < c; i++ {
+		if i >= len(actual) {
+			t.Errorf("at index: %d\nexpected: %s\n  actual: <nil>", i, expected[i])
+		} else if i >= len(expected) {
+			t.Errorf("at index: %d\nunexpected: %s", i, &actual[i])
+		} else if actual[i].String() != expected[i] {
+			t.Errorf("at index: %d\nexpected: %s\n  actual: %s", i, expected[i], &actual[i])
 		}
 	}
 }
@@ -182,7 +193,7 @@ func createTestModel(data string, evacuatingNodes ...string) *Model {
 				panic("unexpected split on: " + line)
 			}
 			name := parts[0]
-			docs := parts[1]
+			_ = parts[1] // docs
 			size := parts[2]
 
 			collName := getCollName(name)
@@ -191,10 +202,10 @@ func createTestModel(data string, evacuatingNodes ...string) *Model {
 			if collection == nil {
 				collection = &Collection{Name: collName}
 				collectionMap[collName] = collection
-				m.Collections = append(m.Collections, collection)
+				m.AddCollection(collection)
 			}
 
-			core := &Core{Name: name, Collection: collName, Shard: shardName, Docs: toCount(docs), Size: toBytes(size)}
+			core := &Core{Name: name, Collection: collName, Shard: shardName, Size: toBytes(size)}
 			collection.Add(core)
 			currentNode.Add(core)
 			m.Add(core)
@@ -228,7 +239,7 @@ func getShardName(coreName string) string {
 	return coreName[start+1 : end]
 }
 
-func toCount(str string) float64 {
+func toCount(str string) int64 {
 	var v float64
 	var err error
 	if strings.HasSuffix(str, "K") {
@@ -247,10 +258,10 @@ func toCount(str string) float64 {
 	if err != nil {
 		panic(err)
 	}
-	return v
+	return int64(v)
 }
 
-func toBytes(str string) float64 {
+func toBytes(str string) int64 {
 	if !strings.HasSuffix(str, "B") {
 		panic("expected to end with B: " + str)
 	}
@@ -281,11 +292,11 @@ const (
 		"B_shard1_replica1,1.8M,1.4GB\n" +
 		""
 
-	// Should move A to solr-2 for better collection balance (even if worse cluster balance)
+	// Should move A to solr-2 instead of B.
 	collectionBalanceModel = "" +
 		"solr-1.node,1.1.1.1:8983_solr\n" +
 		"A_shard1_replica1,15.5M,11.5GB\n" +
-		"B_shard1_replica1,15.0M,11.0GB\n" +
+		"B_shard1_replica1,5.0M,5.0GB\n" +
 		"solr-2.node,2.2.2.2:8983_solr\n" +
 		"B_shard2_replica1,1.0M,1.0GB\n" +
 		""

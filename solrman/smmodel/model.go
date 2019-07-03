@@ -17,52 +17,46 @@ package smmodel
 import (
 	"fmt"
 	"sort"
-	"sync"
 )
 
-const debug = 0 // 0 means no debug output; 3 is maximum debug output
-
 type Model struct {
-	Docs        float64       `json:"docs"`
-	Size        float64       `json:"size"` // in bytes
 	Nodes       []*Node       `json:"nodes"`
 	Collections []*Collection `json:"collections"`
-	cores       []*Core
+	Cores       []*Core
 
-	cost float64 // cached cost
-}
-
-func (m *Model) FindCore(coreName string) *Core {
-	for _, core := range m.cores {
-		if core.Name == coreName {
-			return core
-		}
-	}
-	return nil
-}
-
-func (m *Model) FindNode(nodeName string) *Node {
-	for _, node := range m.Nodes {
-		if node.Name == nodeName {
-			return node
-		}
-	}
-	return nil
+	MaxSizePerNode int64 // maximum allowed size on a
 }
 
 func (m *Model) Add(core *Core) {
-	m.Docs += core.Docs
-	m.Size += core.Size
-	m.cores = append(m.cores, core)
+	core.id = coreId(len(m.Cores))
+	m.Cores = append(m.Cores, core)
 }
 
 func (m *Model) AddNode(node *Node) {
-	node.id = len(m.Nodes)
+	node.id = nodeId(len(m.Nodes))
 	m.Nodes = append(m.Nodes, node)
 }
 
+func (m *Model) AddCollection(coll *Collection) {
+	coll.id = collectionId(len(m.Collections))
+	m.Collections = append(m.Collections, coll)
+}
+
 // Return a new model with the given move applied
-func (m *Model) WithMove(core *Core, toNode *Node) *Model {
+func (m *Model) WithMove(move Move) *Model {
+	// make sure we're using objects from this model
+	toNode := m.Nodes[move.ToNode.id]
+	fromNode := m.Nodes[move.FromNode.id]
+	core := m.Cores[move.Core.id]
+	coll := m.Collections[core.collectionId]
+
+	if core.Collection != coll.Name {
+		panic(fmt.Sprintf("core.Collection(%s) != coll.Name(%s)", core.Collection, coll.Name))
+	}
+
+	if !fromNode.Contains(core) {
+		panic("fromNode does not contain core")
+	}
 	if toNode.Contains(core) {
 		return m
 	}
@@ -70,209 +64,287 @@ func (m *Model) WithMove(core *Core, toNode *Node) *Model {
 	completeExistingMove := func() bool {
 		// See if any cores exist on the target node with the same shardname.
 		shardName := core.shardName()
-		for _, coll := range m.Collections {
-			if coll.Name == core.Collection {
-				for _, c := range coll.cores {
-					if toNode.Contains(c) && c.shardName() == shardName {
-						return true
-					}
-				}
-				return false
+		for _, c := range coll.cores {
+			if toNode.Contains(c) && c.shardName() == shardName {
+				return true
 			}
 		}
-		panic(fmt.Sprintf("could not find collection %s for core %s in model", core.Collection, core.Name))
+		return false
 	}()
 
 	var newCore *Core
-	if !completeExistingMove {
+	var newColl *Collection
+	if completeExistingMove {
+		newCore = nil
+		newColl = coll.Without(core)
+	} else {
 		coreCopy := *core
 		newCore = &coreCopy
 		newCore.nodeId = toNode.id
+		newColl = coll.Replace(core, newCore)
 	}
 
-	// Update the contents of the nodes to reflect the move.
+	// Update the node list to reflect the move.
 	newNodes := make([]*Node, len(m.Nodes))
-	for i, node := range m.Nodes {
-		if node.Contains(core) {
-			// Replace with a node that lacks this core
-			newNodes[i] = node.Without(core)
-		} else if node == toNode {
-			if completeExistingMove {
-				// Do nothing; the target node already contains a replica core.
-				newNodes[i] = node
-			} else {
-				// Replace with a node that includes this core
-				newNodes[i] = node.With(newCore)
-			}
-		} else {
-			// Do nothing.
-			newNodes[i] = node
-		}
+	copy(newNodes, m.Nodes)
+	newNodes[fromNode.id] = fromNode.Without(core)
+	if !completeExistingMove {
+		// Replace with a node that includes this core, unless it was a move completion
+		newNodes[toNode.id] = toNode.With(newCore)
 	}
 
-	// Update the collections to reflect the move
+	// Update the collection list to reflect the move
 	newCollections := make([]*Collection, len(m.Collections))
-	for i, c := range m.Collections {
-		if c.Name == core.Collection {
-			if completeExistingMove {
-				newCollections[i] = c.Without(core)
-			} else {
-				newCollections[i] = c.Replace(core, newCore)
-			}
-		} else {
-			newCollections[i] = c
-		}
-	}
+	copy(newCollections, m.Collections)
+	newCollections[core.collectionId] = newColl
 
 	// Update the core list to reflect the move.
-	newCores := make([]*Core, 0, len(m.cores))
-	for _, c := range m.cores {
-		if c == core {
-			if !completeExistingMove {
-				newCores = append(newCores, newCore)
-			}
-		} else {
-			newCores = append(newCores, c)
-		}
-	}
+	newCores := make([]*Core, len(m.Cores))
+	copy(newCores, m.Cores)
+	newCores[core.id] = newCore
 
-	// Subtle: do NOT adjust m.Docs / m.Size for a core deletion. Otherwise deletions would score badly.
 	return &Model{
 		Nodes:       newNodes,
 		Collections: newCollections,
-		cores:       newCores,
-		Docs:        m.Docs,
-		Size:        m.Size,
+		Cores:       newCores,
 	}
 }
 
-type permutation struct {
-	cost float64
-	move Move
-}
+func (m *Model) computeNextMove(mustEvacuate bool, immobileCores []bool) *Move {
+	if len(m.Nodes) < 2 || len(m.Cores) < 1 {
+		// can't balance a single-node or empty cluster
+		return nil
+	}
 
-func (m *Model) computeNextMoveShard(mustEvacuate bool, shard int, shardCount int, chanPerm chan<- permutation) {
-	// Try moving every core to every other node, find the best score.
-	count := 0
-	for _, core := range m.cores {
-		var fromNode *Node
+	// Compute balance info.
+	balanceInfo := make([]balanceInfo, 0, len(m.Collections))
+	for _, c := range m.Collections {
+		balanceInfo = append(balanceInfo, c.balance(len(m.Nodes)))
+	}
+	sort.Slice(balanceInfo, func(i, j int) bool {
+		return balanceInfo[i].score > balanceInfo[j].score
+	})
+
+	// Step 1: remove duplicate replicas
+	for _, bi := range balanceInfo {
+		coll := bi.coll
+		cores := make([]*Core, len(coll.cores))
+		copy(cores, coll.cores)
+		sort.Slice(cores, func(i, j int) bool {
+			return cores[i].Shard < cores[j].Shard
+		})
+
+		for i, core := range cores {
+			if i == 0 {
+				continue
+			}
+			last := cores[i-1]
+			if core.Shard != last.Shard {
+				continue
+			}
+
+			// found a dup
+			from := m.Nodes[core.nodeId]
+			to := m.Nodes[last.nodeId]
+
+			// Move from the node that:
+			// - is evacuating
+			// - has more cores in the collection
+			// - is on the larger node
+			if to.Evacuating || bi.coresPerNode[to.id] > bi.coresPerNode[from.id] || to.Size > from.Size {
+				from, to = to, from
+				core = last
+			}
+
+			return &Move{
+				Core:     core,
+				FromNode: from,
+				ToNode:   to,
+			}
+		}
+	}
+
+	nodesBySize := make([]*Node, len(m.Nodes))
+	copy(nodesBySize, m.Nodes)
+	sort.Slice(nodesBySize, func(i, j int) bool {
+		return nodesBySize[i].Size < nodesBySize[j].Size
+	})
+
+	// Try to move a core from the given node.
+	tryMoveCoreFrom := func(source *Node, force bool) *Move {
+		for _, target := range nodesBySize {
+			if target.Evacuating || target == source {
+				continue
+			}
+
+			// Move the largest core that doesn't violate constraints.
+			var candidates []*Core
+			for i, c := range m.Cores {
+				if c == nil || immobileCores[i] {
+					continue
+				}
+				if source.Contains(c) {
+					candidates = append(candidates, c)
+				}
+			}
+
+			sort.Slice(candidates, func(i, j int) bool {
+				return candidates[i].Size > candidates[j].Size
+			})
+
+			if force {
+				// ignore constrants
+				return &Move{
+					Core:     candidates[0],
+					FromNode: source,
+					ToNode:   target,
+				}
+			}
+
+			if 9*source.Size < 10*target.Size {
+				// if the target node is >=90% of the source node, don't bother
+				return nil
+			}
+
+			for _, core := range candidates {
+				// Make sure moving this core won't violate collection balance.
+				coll := m.Collections[core.collectionId]
+				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.maxCoresPerNode {
+					continue
+				}
+
+				// Don't bother moving this core if the target node would become bigger than the source node.
+				if target.Size+core.Size >= source.Size {
+					continue
+				}
+
+				// Found a good candidate.
+				return &Move{
+					Core:     core,
+					FromNode: source,
+					ToNode:   target,
+				}
+			}
+		}
+		return nil
+	}
+
+	// Step 2: evacuate nodes first, respecting least-harm for collection and node balance.
+	if mustEvacuate {
 		for _, node := range m.Nodes {
-			if node.Contains(core) {
-				fromNode = node
+			if node.Evacuating && node.coreCount > 0 {
+				return tryMoveCoreFrom(node, true)
+			}
+		}
+	}
+
+	// Step 3: balance collections next, respecting evacuation and node max size.
+	for _, bi := range balanceInfo {
+		if bi.score == 0 {
+			continue
+		}
+
+		// Find a suitable source node with the greatest number of collection replicas and the largest node size
+		sources := make([]*Node, len(m.Nodes))
+		copy(sources, m.Nodes)
+		sort.Slice(sources, func(i, j int) bool {
+			a := sources[i]
+			b := sources[j]
+			if bi.coresPerNode[a.id] != bi.coresPerNode[b.id] {
+				return bi.coresPerNode[a.id] > bi.coresPerNode[b.id]
+			}
+			return a.Size > b.Size
+		})
+		fromNode := sources[0]
+		var core *Core
+
+		// Pick a random core to move
+		for _, c := range bi.coll.cores {
+			if immobileCores[c.id] {
+				continue
+			}
+			if fromNode.Contains(c) {
+				core = c
 				break
 			}
 		}
-		if core.Docs < 500000 && !fromNode.Evacuating {
-			// HACK, optimization: don't even consider move cores with less than 500K docs
+
+		if core == nil {
+			// all of the cores must be immobile
 			continue
 		}
-		if mustEvacuate && !fromNode.Evacuating {
-			// skip moves off of nodes that aren't trying to evacuate their contents
-			continue
-		}
-		if fromNode == nil {
-			panic("cannot find owner node for: " + core.Name)
-		}
-		for _, toNode := range m.Nodes {
-			if toNode == fromNode {
+
+		// Find a suitable target node with the least number of collection replicas and the smallest node size
+		targets := make([]*Node, len(m.Nodes))
+		copy(targets, m.Nodes)
+		sort.Slice(targets, func(i, j int) bool {
+			a := targets[i]
+			b := targets[j]
+			if bi.coresPerNode[a.id] != bi.coresPerNode[b.id] {
+				return bi.coresPerNode[a.id] < bi.coresPerNode[b.id]
+			}
+			return a.Size < b.Size
+		})
+
+		for _, target := range targets {
+			if target.Evacuating {
 				continue
 			}
-			if toNode.Evacuating {
-				// don't bother considering a move that adds a core to a node that is being evacuated
+			if bi.coresPerNode[target.id] >= bi.maxCoresPerNode {
+				// no good choices
+				break
+			}
+			if m.MaxSizePerNode > 0 && target.Size >= m.MaxSizePerNode {
+				// too much data already on this node
 				continue
 			}
 
-			count += 1
-			if count%shardCount == shard {
-				mPrime := m.WithMove(core, toNode)
-				perm := permutation{
-					cost: mPrime.Cost(),
-					move: Move{Core: core, FromNode: fromNode, ToNode: toNode},
-				}
-				if debug >= 1 {
-					fmt.Printf("move cost: %f: %s\n", perm.cost, perm.move.String())
-				}
-				chanPerm <- perm
+			// Found a good choice.
+			return &Move{
+				Core:     core,
+				FromNode: fromNode,
+				ToNode:   target,
 			}
 		}
 	}
+
+	// Step 4: balance nodes next, respecting evacuation and collection balance.
+	// Take the largest core from the largest node, and move it to the smallest node, provided we don't violate constraints.
+	if len(nodesBySize) > 1 {
+		biggest := nodesBySize[len(nodesBySize)-1]
+		m := tryMoveCoreFrom(biggest, false)
+		if m != nil {
+			return m
+		}
+	}
+
+	return nil
 }
 
-func (m *Model) ComputeBestMoves(numCPU int, count int) []Move {
-	baseCost := m.Cost()
-	if debug >= 1 {
-		fmt.Printf("base model cost: %f\n", baseCost)
-	}
+func (m *Model) ComputeBestMoves(count int) []Move {
+	var moves []Move
 
-	// check to see if our next move must be an evacuation
-	mustEvacuate := false
-	for _, n := range m.Nodes {
-		if n.Evacuating && n.coreCount > 0 {
-			mustEvacuate = true
+	curModel := m
+	immobileCores := make([]bool, len(m.Cores)) // cores that have already moved
+	for i := 0; i < count; i++ {
+		// check to see if our next move must be an evacuation
+		mustEvacuate := false
+		for _, n := range curModel.Nodes {
+			if n.Evacuating && n.coreCount > 0 {
+				mustEvacuate = true
+				break
+			}
+		}
+
+		move := curModel.computeNextMove(mustEvacuate, immobileCores)
+		if move == nil {
+			// no good moves
 			break
 		}
-	}
-	if debug >= 1 {
-		fmt.Printf("Move must remove core from evacuating node? %v\n", mustEvacuate)
-	}
-
-	// Try moving every core to every other node, compute scores.
-	chanPerm := make(chan permutation)
-	var wg sync.WaitGroup
-	for i := 0; i < numCPU; i += 1 {
-		wg.Add(1)
-		go func(shard int) {
-			defer wg.Done()
-			m.computeNextMoveShard(mustEvacuate, shard, numCPU, chanPerm)
-		}(i)
+		immobileCores[move.Core.id] = true
+		moves = append(moves, *move)
+		curModel = curModel.WithMove(*move)
 	}
 
-	go func() {
-		wg.Wait()
-		close(chanPerm)
-	}()
-
-	var allPerms []permutation
-	for perm := range chanPerm {
-		if perm.cost < baseCost || perm.move.FromNode.Evacuating {
-			allPerms = append(allPerms, perm)
-		}
-	}
-
-	sort.Slice(allPerms, func(i, j int) bool {
-		return allPerms[i].cost < allPerms[j].cost
-	})
-
-	// Now that we have all moves in score order, greedily attempt to apply each move in order
-	// if it improves the current score, until we run out of moves or find the number requested.
-	var moves []Move
-	curModel := m
-	curCost := baseCost
-	immobileCores := map[string]bool{} // cores that have already moved
-	for _, p := range allPerms {
-		move := p.move
-
-		if immobileCores[move.Core.Name] {
-			continue
-		}
-
-		// We have to re-resolve the core and node in the current model.
-		core := curModel.FindCore(move.Core.Name)
-		node := curModel.FindNode(move.ToNode.Name)
-		newModel := curModel.WithMove(core, node)
-		newCost := newModel.Cost()
-
-		// Skip any moves that would increase the cost; this happens because moves were originally considered in isolation.
-		if newCost < curCost {
-			curModel = newModel
-			curCost = newCost
-			moves = append(moves, move)
-			immobileCores[core.Name] = true
-		}
-		if len(moves) >= count {
-			// Found enough
-			return moves
-		}
-	}
 	return moves
 }
