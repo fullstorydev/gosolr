@@ -124,6 +124,6 @@ func testStorage_CompletedOps(t *testing.T, s SolrManStorage) {
 	expectOps = expectOps[len(expectOps)-NumStoredCompletedOps:]
 	sort.Sort(sort.Reverse(sort.StringSlice(expectOps))) // should come back in reverse order
 	assertOps(bigNum, expectOps...)
-        // A negative count also returns all values.
+	// A negative count also returns all values.
 	assertOps(-1, expectOps...)
 }

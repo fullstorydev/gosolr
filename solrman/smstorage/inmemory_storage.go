@@ -84,8 +84,8 @@ func (s *InMemoryStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, err
 
 	ret := s.completed
 	if count < 0 {
-                return ret, nil
-        } else if len(ret) > count {
+		return ret, nil
+	} else if len(ret) > count {
 		ret = ret[:count]
 	}
 	return ret, nil

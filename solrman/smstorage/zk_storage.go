@@ -171,10 +171,10 @@ func (s *ZkStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, error) {
 	ret := s.fetchOps(path, children)
 	sort.Sort(solrmanapi.ByFinishedRecently(ret))
 
-        // A negative count returns all completed operations.
-        if count < 0 {
-                return ret, nil
-        } else if len(ret) > count {
+	// A negative count returns all completed operations.
+	if count < 0 {
+		return ret, nil
+	} else if len(ret) > count {
 		ret = ret[:count]
 	}
 	return ret, nil

@@ -17,7 +17,7 @@ package smutil
 import (
 	"fmt"
 	"net"
-        "strconv"
+	"strconv"
 	"strings"
 
 	"github.com/samuel/go-zookeeper/zk"
@@ -33,10 +33,10 @@ func ParseNodeName(node string) (string, string, error) {
 	if ip, port, err := net.SplitHostPort(parts[0]); err != nil {
 		return "", "", fmt.Errorf("%q is not a valid socket", parts[0])
 	} else {
-                _, err := strconv.ParseUint(port, 10, 16)
-                if err != nil {
-                        return "", "", fmt.Errorf("%s is not a valid port", port)
-                }
+		_, err := strconv.ParseUint(port, 10, 16)
+		if err != nil {
+			return "", "", fmt.Errorf("%s is not a valid port", port)
+		}
 		return ip, port, nil
 	}
 }
