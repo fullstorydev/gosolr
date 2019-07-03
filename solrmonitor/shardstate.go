@@ -43,19 +43,40 @@ func (s ShardState) IsActive() bool {
 }
 
 func (s ShardState) RangeBounds() (int32, int32, error) {
-	var ret bounds
 	if s.rangeInitialized {
-		ret = s.rangeBounds
-	} else {
-		ret = computeBounds(s.Range)
+		return s.rangeBounds.lo, s.rangeBounds.hi, s.rangeBounds.err
 	}
-	return ret.lo, ret.hi, ret.err
+	return ComputeHashBounds(s.Range)
 }
 
 func (s ShardState) WithRangeBounds() ShardState {
-	s.rangeBounds = computeBounds(s.Range)
+	s.rangeBounds.lo, s.rangeBounds.hi, s.rangeBounds.err = ComputeHashBounds(s.Range)
 	s.rangeInitialized = true
 	return s
+}
+
+// Parse a solr hashRange string as uint, then cast to int32 to force wrapping into range.  This is what Solr does.
+func ComputeHashBounds(rangeStr string) (int32, int32, error) {
+	parts := strings.Split(rangeStr, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("failed to split %q", rangeStr)
+	}
+
+	lo, err := strconv.ParseUint(parts[0], 16, 64)
+	if err != nil || lo > math.MaxUint32 {
+		return 0, 0, fmt.Errorf("failed to parse %q", parts[0])
+	}
+
+	hi, err := strconv.ParseUint(parts[1], 16, 64)
+	if err != nil || hi > math.MaxUint32 {
+		return 0, 0, fmt.Errorf("failed to parse %q", parts[1])
+	}
+
+	if int32(lo) > int32(hi) {
+		return 0, 0, fmt.Errorf("low should be <= high %q", rangeStr)
+	}
+
+	return int32(lo), int32(hi), nil
 }
 
 func (s *ShardState) UnmarshalJSON(data []byte) error {
@@ -65,7 +86,7 @@ func (s *ShardState) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	s.rangeBounds = computeBounds(s.Range)
+	s.rangeBounds.lo, s.rangeBounds.hi, s.rangeBounds.err = ComputeHashBounds(s.Range)
 	s.rangeInitialized = true
 	return nil
 }
@@ -78,28 +99,4 @@ func (s *ShardState) FindSingleHostForShard() string {
 		}
 	}
 	return ""
-}
-
-// Parse as uint, then cast to int32 to force wrapping into range.  This is what Solr does.
-func computeBounds(rangeStr string) bounds {
-	parts := strings.Split(rangeStr, "-")
-	if len(parts) != 2 {
-		return bounds{err: fmt.Errorf("failed to split %q", rangeStr)}
-	}
-
-	lo, err := strconv.ParseUint(parts[0], 16, 64)
-	if err != nil || lo > math.MaxUint32 {
-		return bounds{err: fmt.Errorf("failed to parse %q", parts[0])}
-	}
-
-	hi, err := strconv.ParseUint(parts[1], 16, 64)
-	if err != nil || hi > math.MaxUint32 {
-		return bounds{err: fmt.Errorf("failed to parse %q", parts[1])}
-	}
-
-	if int32(lo) > int32(hi) {
-		return bounds{err: fmt.Errorf("low should be <= high %q", rangeStr)}
-	}
-
-	return bounds{lo: int32(lo), hi: int32(hi)}
 }
