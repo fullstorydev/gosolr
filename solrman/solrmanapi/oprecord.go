@@ -32,6 +32,7 @@ type OpRecord struct {
 	Shard      string
 	SrcNode    string // instance name of source node
 	DstNode    string // instance name of destination node
+        Requestor  string // Who requested the operation (either a user, or "solrman" if automation)
 	Error      string // non-empty if the operation failed; always set on a Status op
 }
 
