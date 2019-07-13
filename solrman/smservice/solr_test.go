@@ -5,13 +5,13 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fullstorydev/gosolr/smtestutil"
 	"github.com/fullstorydev/gosolr/smutil"
-	"reflect"
-	"time"
 )
 
 const errorStringPayload = `{

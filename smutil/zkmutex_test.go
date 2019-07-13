@@ -119,11 +119,11 @@ func TestAcquireAndMonitorZkMutexSerial(t *testing.T) {
 		tu := setup(t)
 		defer tu.teardown()
 
-		close, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
+		closer, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
 		if err != nil {
 			t.Fatal(err)
 		}
-		close()
+		closer()
 	}
 	elapsed := time.Since(start)
 	if elapsed > expectDuration {
@@ -152,11 +152,11 @@ func TestAcquireAndMonitorZkMutexParallel(t *testing.T) {
 		go func(tu *testutil) {
 			defer wg.Done()
 
-			close, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
+			closer, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer close()
+			defer closer()
 			if !atomic.CompareAndSwapInt32(&mutexHolders, 0, 1) {
 				t.Error("Expected mutex holders to be 0 after acquiring mutex, but it wasn't!")
 			}
@@ -185,11 +185,11 @@ func TestAcquireAndMonitorZkMutexLost(t *testing.T) {
 	tu := setup(t)
 	defer tu.teardown()
 
-	close, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
+	closer, err := smutil.AcquireAndMonitorZkMutex(smtestutil.NewSmTestLogger(t), tu.conn, tu.root+"/mutex", onLostMutex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer close()
+	defer closer()
 
 	select {
 	case <-mutexWasLost:

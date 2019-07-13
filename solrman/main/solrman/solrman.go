@@ -16,6 +16,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,8 +28,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"encoding/json"
 
 	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/smservice"

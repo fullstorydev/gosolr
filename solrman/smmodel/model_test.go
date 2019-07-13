@@ -15,11 +15,12 @@
 package smmodel
 
 import (
-	"fs/fsmath"
 	"io/ioutil"
 	"strconv"
 	"strings"
 	"testing"
+
+	"fs/fsmath"
 )
 
 func TestEmptyModel(t *testing.T) {

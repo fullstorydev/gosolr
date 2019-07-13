@@ -25,13 +25,13 @@ type MoveShardRequest struct {
 	Shard      string
 	SrcNode    string // Solr node name of the source node (e.g. "1.1.1.1:8983_solr"
 	DstNode    string // Solr node name of the destination node (e.g. "1.1.1.1:8983_solr"
-        Requestor  string // Username of who requested the operation ("solrman" if through automation)
+	Requestor  string // Username of who requested the operation ("solrman" if through automation)
 }
 
 type SplitShardRequest struct {
 	Collection string
 	Shard      string
-        Requestor  string // Username of who requested the operation ("solrman" if through automation)
+	Requestor  string // Username of who requested the operation ("solrman" if through automation)
 }
 
 type OpStatusResponse struct {
