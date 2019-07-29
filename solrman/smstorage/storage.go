@@ -18,7 +18,10 @@ import (
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 )
 
-const NumStoredCompletedOps = 100
+// Completed ops have names like `completed-0000001157` (20 bytes). ZK's GetChildren() is a
+// single call whose response payload must fit into less than ~4MB, so we have to keep this
+// number semi-reasonable.
+const NumStoredCompletedOps = 1000
 
 type SolrManStorage interface {
 	// Record an op as being in-progress.  op.Key() must be unique.
