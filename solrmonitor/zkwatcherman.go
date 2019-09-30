@@ -25,7 +25,7 @@ import (
 // A monitorChildren request whose last attempt to set a watch failed.
 type deferredChildrenTask struct {
 	path     string
-	onchange func(children []string) bool
+	onchange func(children []string) (bool, error)
 }
 
 // A monitorData request whose last attempt to set a watch failed.
@@ -146,7 +146,7 @@ func (m *zkWatcherMan) enqueueDeferredTask(task interface{}) {
 	}
 }
 
-func (m *zkWatcherMan) monitorChildren(synch bool, path string, onchange func(children []string) bool) error {
+func (m *zkWatcherMan) monitorChildren(synch bool, path string, onchange func(children []string) (bool, error)) error {
 	if !synch {
 		// Just setup a deferred task and call it a day
 		m.enqueueDeferredTask(deferredChildrenTask{path: path, onchange: onchange})
@@ -158,7 +158,10 @@ func (m *zkWatcherMan) monitorChildren(synch bool, path string, onchange func(ch
 	if err != nil {
 		return err
 	}
-	cont := onchange(children)
+	cont, err := onchange(children)
+	if err != nil {
+		return err
+	}
 	if !cont {
 		return nil
 	}
@@ -175,8 +178,13 @@ func (m *zkWatcherMan) monitorChildren(synch bool, path string, onchange func(ch
 			}
 			return nil
 		}
-		cont := onchange(children)
-		if cont {
+		cont, err := onchange(children)
+		if err != nil {
+			// We failed to call the onchange handler; add a task for the recovery thread to keep trying
+			m.logger.Printf("zkWatcherMan %s: error calling onchange: %s", path, err)
+			m.enqueueDeferredTask(deferredChildrenTask{path: path, onchange: onchange})
+			return nil
+		} else if cont {
 			return newWatcher
 		} else {
 			return nil // don't watch anymore

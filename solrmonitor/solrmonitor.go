@@ -133,24 +133,25 @@ func (c *SolrMonitor) start() error {
 
 	collectionsPath := c.solrRoot + "/collections"
 	isInit := true
-	err = c.zkWatcher.monitorChildren(true, collectionsPath, func(children []string) bool {
+	err = c.zkWatcher.monitorChildren(true, collectionsPath, func(children []string) (bool, error) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		c.updateCollections(children, isInit)
-		return true
+		defer func() {
+			isInit = false
+		}()
+		return true, c.updateCollections(children, isInit)
 	})
 	if err != nil {
 		c.logger.Printf("%s: error getting children: %s", collectionsPath, err)
 		return err
 	}
-	isInit = false
 
 	liveNodesPath := c.solrRoot + "/live_nodes"
-	c.zkWatcher.monitorChildren(true, liveNodesPath, func(children []string) bool {
+	err = c.zkWatcher.monitorChildren(true, liveNodesPath, func(children []string) (bool, error) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		c.updateLiveNodes(children)
-		return true
+		return true, nil
 	})
 	if err != nil {
 		c.logger.Printf("%s: error getting children: %s", liveNodesPath, err)
@@ -160,16 +161,23 @@ func (c *SolrMonitor) start() error {
 }
 
 // Update the set of active collections; must hold the lock except during init().
-func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
+func (c *SolrMonitor) updateCollections(collections []string, isInit bool) (retErr error) {
 	var logAdded, logRemoved []string
 	logOldSize, logNewSize := len(c.collections), len(collections)
 
 	collectionExists := make(map[string]bool)
+	errChan := make(chan error, 1)
 
 	// First, add any collections that don't already exist
 	var wg sync.WaitGroup
 	if isInit {
-		defer wg.Wait()
+		defer func() {
+			wg.Wait()
+			select {
+			case retErr = <-errChan:
+			default:
+			}
+		}()
 	}
 	for _, name := range collections {
 		collectionExists[name] = true
@@ -183,7 +191,14 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				coll.start(isInit)
+				if err := coll.start(isInit); err != nil {
+					// Only possible to get an error here if isInit = true,
+					// and in this case we can propagate the error all the way back.
+					select {
+					case errChan <- err:
+					default:
+					}
+				}
 			}()
 			c.collections[name] = coll
 			logAdded = append(logAdded, name)
@@ -207,6 +222,7 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) {
 	}
 
 	c.logger.Printf("solrmonitor (%d) -> (%d) collections; added=%s, removed=%s", logOldSize, logNewSize, logAdded, logRemoved)
+	return
 }
 
 func (c *SolrMonitor) updateLiveNodes(liveNodes []string) {
@@ -282,9 +298,9 @@ func parseStateData(name string, data []byte, version int32) *parsedCollectionSt
 	return &parsedCollectionState{collectionState: collState}
 }
 
-func (coll *collection) start(isInit bool) {
+func (coll *collection) start(isInit bool) error {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-	coll.parent.zkWatcher.monitorData(isInit, path, func(data string, version int32) bool {
+	return coll.parent.zkWatcher.monitorData(isInit, path, func(data string, version int32) bool {
 		coll.mu.Lock()
 		defer coll.mu.Unlock()
 		coll.setData(data, version)
