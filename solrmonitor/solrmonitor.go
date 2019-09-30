@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
@@ -167,6 +168,7 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) (retE
 
 	collectionExists := make(map[string]bool)
 	errChan := make(chan error, 1)
+	var errCount int64
 
 	// First, add any collections that don't already exist
 	var wg sync.WaitGroup
@@ -198,6 +200,7 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) (retE
 					case errChan <- err:
 					default:
 					}
+					atomic.AddInt64(&errCount, 1)
 				}
 			}()
 			c.collections[name] = coll
@@ -221,7 +224,8 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) (retE
 		logRemoved = []string{fmt.Sprintf("(%d) suppressing list", len(logRemoved))}
 	}
 
-	c.logger.Printf("solrmonitor (%d) -> (%d) collections; added=%s, removed=%s", logOldSize, logNewSize, logAdded, logRemoved)
+	c.logger.Printf("solrmonitor (%d) -> (%d) collections; added=%s, removed=%s, errors=%s",
+		logOldSize, logNewSize, logAdded, logRemoved, atomic.LoadInt64(&errCount))
 	return
 }
 
