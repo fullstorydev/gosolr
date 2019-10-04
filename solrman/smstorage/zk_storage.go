@@ -142,6 +142,9 @@ func (s *ZkStorage) AddCompletedOp(op solrmanapi.OpRecord) error {
 		// Since these nodes are all sequential, just delete the first N.
 		sort.Strings(children)
 		if len(children) > NumStoredCompletedOps {
+			// In the case that the number of children changes
+			// between the time we stat the path and actually
+			// get the children, we do this check.
 			toDelete := children[:len(children)-NumStoredCompletedOps]
 			for _, child := range toDelete {
 				childPath := path + "/" + child

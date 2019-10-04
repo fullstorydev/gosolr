@@ -22,6 +22,7 @@ type Core struct {
 	Collection string `json:"collection"`
 	Shard      string `json:"shard"`
 	Size       int64  `json:"size"` // in bytes
+	NumDocs    int64  `json:"num_docs"`
 
 	id           coreId
 	collectionId collectionId // the collection i belong to

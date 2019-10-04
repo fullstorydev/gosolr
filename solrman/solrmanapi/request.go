@@ -26,12 +26,16 @@ type MoveShardRequest struct {
 	SrcNode    string // Solr node name of the source node (e.g. "1.1.1.1:8983_solr"
 	DstNode    string // Solr node name of the destination node (e.g. "1.1.1.1:8983_solr"
 	Requestor  string // Username of who requested the operation ("solrman" if through automation)
+	NumDocs    int64  // The number of docs in this shard
+	IndexSize  int64  // The size of the shard in bytes
 }
 
 type SplitShardRequest struct {
 	Collection string
 	Shard      string
 	Requestor  string // Username of who requested the operation ("solrman" if through automation)
+	NumDocs    int64  // The number of docs in this shard
+	IndexSize  int64  // The size of the shard in bytes
 }
 
 type OpStatusResponse struct {

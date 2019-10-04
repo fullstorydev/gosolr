@@ -27,6 +27,8 @@ const (
 type OpRecord struct {
 	StartedMs  int64  `json:"Started"`  // start time, in millis since epoch
 	FinishedMs int64  `json:"Finished"` // end time, in millis since epoch
+	NumDocs    int64  `json:"NumDocs"`
+	IndexSize  int64  `json:"IndexSize"`
 	Operation  string // one of the Op* constants
 	Collection string
 	Shard      string
