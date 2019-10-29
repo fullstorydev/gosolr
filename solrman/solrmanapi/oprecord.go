@@ -36,6 +36,7 @@ type OpRecord struct {
 	DstNode    string // instance name of destination node
 	Requestor  string // Who requested the operation (either a user, or "solrman" if automation)
 	Error      string // non-empty if the operation failed; always set on a Status op
+	AsyncId    string // Async ID if present
 }
 
 func (r *OpRecord) String() string {
