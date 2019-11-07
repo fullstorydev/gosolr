@@ -33,6 +33,7 @@ type MoveShardRequest struct {
 type SplitShardRequest struct {
 	Collection string
 	Shard      string
+	SrcNode    string // Node that the shard to be split lives on.
 	Requestor  string // Username of who requested the operation ("solrman" if through automation)
 	NumDocs    int64  // The number of docs in this shard
 	IndexSize  int64  // The size of the shard in bytes

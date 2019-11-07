@@ -32,7 +32,7 @@ type OpRecord struct {
 	Operation  string // one of the Op* constants
 	Collection string
 	Shard      string
-	SrcNode    string // instance name of source node
+	SrcNode    string // instance name of source node (in the case of a split, this node has the parent)
 	DstNode    string // instance name of destination node
 	Requestor  string // Who requested the operation (either a user, or "solrman" if automation)
 	Error      string // non-empty if the operation failed; always set on a Status op
