@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
@@ -222,6 +223,19 @@ func (s *ZkStorage) SetDisabled(disabled bool) error {
 		}
 	}
 	return nil
+}
+
+func (s *ZkStorage) GetDisabledTime() time.Time {
+	path := s.disabledPath()
+	exists, stat, err := s.conn.Exists(path)
+	if err != nil || !exists {
+		if s.logger != nil && err != nil {
+			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
+		}
+		return time.Time{}
+	}
+	// the Ctime is in ms since epoch, so convert before returning
+	return time.Unix(stat.Ctime/1000, 0)
 }
 
 func (s *ZkStorage) IsSplitsDisabled() bool {

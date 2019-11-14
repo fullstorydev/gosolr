@@ -17,6 +17,7 @@ package smstorage
 import (
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 )
@@ -111,6 +112,10 @@ func (s *InMemoryStorage) SetDisabled(disabled bool) error {
 
 	s.disabled = disabled
 	return nil
+}
+
+func (s *InMemoryStorage) GetDisabledTime() time.Time {
+	return time.Time{}
 }
 
 func (s *InMemoryStorage) IsSplitsDisabled() bool {

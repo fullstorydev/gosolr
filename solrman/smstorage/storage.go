@@ -15,6 +15,8 @@
 package smstorage
 
 import (
+	"time"
+
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 )
 
@@ -42,8 +44,9 @@ type SolrManStorage interface {
 	// Returns a list of solr nodes that should be evacuated (e.g. move cores off these nodes onto other nodes)
 	GetEvacuateNodeList() ([]string, error)
 
-	IsDisabled() bool       // if true, solrman is entirely disabled
-	SetDisabled(bool) error // disable solrman due to unrecoverable error completing an op
+	IsDisabled() bool           // if true, solrman is entirely disabled
+	SetDisabled(bool) error     // disable solrman due to unrecoverable error completing an op
+	GetDisabledTime() time.Time // ms since the disabled node was created
 
 	IsSplitsDisabled() bool       // if true, don't do splits
 	SetSplitsDisabled(bool) error // disable splits
