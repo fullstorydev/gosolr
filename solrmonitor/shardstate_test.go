@@ -22,6 +22,11 @@ import (
 	"testing"
 )
 
+func computeBounds(rangeStr string) bounds {
+	lo, hi, err := ComputeHashBounds(rangeStr)
+	return bounds{lo, hi, err}
+}
+
 func TestComputeBounds(t *testing.T) {
 	assertBounds(t, bounds{lo: math.MinInt32, hi: math.MaxInt32}, computeBounds("80000000-7fffffff"))
 	assertBounds(t, bounds{lo: 0, hi: 0x6eeeeee}, computeBounds("00000000-06eeeeee"))
