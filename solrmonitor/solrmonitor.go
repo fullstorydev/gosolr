@@ -33,7 +33,7 @@ type SolrMonitor struct {
 	collections map[string]*collection // map of all currently-known collections
 	liveNodes   []string               // current set of live_nodes
 
-	zkWatcher *zkWatcherMan
+	zkWatcher *ZkWatcherMan
 }
 
 // Minimal interface solrmonitor needs (allows for mock ZK implementations).
@@ -135,7 +135,7 @@ func (c *SolrMonitor) start() error {
 
 	collectionsPath := c.solrRoot + "/collections"
 	isInit := true
-	err = c.zkWatcher.monitorChildren(true, collectionsPath, func(children []string) (bool, error) {
+	err = c.zkWatcher.MonitorChildren(true, collectionsPath, func(children []string) (bool, error) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		defer func() {
@@ -149,7 +149,7 @@ func (c *SolrMonitor) start() error {
 	}
 
 	liveNodesPath := c.solrRoot + "/live_nodes"
-	err = c.zkWatcher.monitorChildren(true, liveNodesPath, func(children []string) (bool, error) {
+	err = c.zkWatcher.MonitorChildren(true, liveNodesPath, func(children []string) (bool, error) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		c.updateLiveNodes(children)
@@ -305,7 +305,7 @@ func parseStateData(name string, data []byte, version int32) *parsedCollectionSt
 
 func (coll *collection) start(isInit bool) error {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-	return coll.parent.zkWatcher.monitorData(isInit, path, func(data string, version int32) bool {
+	return coll.parent.zkWatcher.MonitorData(isInit, path, func(data string, version int32) bool {
 		coll.mu.Lock()
 		defer coll.mu.Unlock()
 		coll.setData(data, version)

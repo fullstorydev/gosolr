@@ -17,25 +17,26 @@ package solrmonitor
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-// A monitorChildren request whose last attempt to set a watch failed.
+// A MonitorChildren request whose last attempt to set a watch failed.
 type deferredChildrenTask struct {
 	path     string
 	onchange func(children []string) (bool, error)
 }
 
-// A monitorData request whose last attempt to set a watch failed.
+// A MonitorData request whose last attempt to set a watch failed.
 type deferredDataTask struct {
 	path     string
 	onchange func(data string, version int32) bool
 }
 
 // Helper class to continuously monitor nodes for state or data changes.
-type zkWatcherMan struct {
+type ZkWatcherMan struct {
 	mu         sync.RWMutex
 	logger     zk.Logger // where to debug log
 	zkCli      ZkCli     // the ZK client
@@ -46,10 +47,10 @@ type zkWatcherMan struct {
 	deferredRecoveryTasks fifoTaskQueue
 }
 
-// Create a zkWatcherMan to continuously monitor nodes for state and data changes.
+// Create a ZkWatcherMan to continuously monitor nodes for state and data changes.
 // In the event of a zk disconnect and reconnect, will automatically re-establish watches.
-func NewZkWatcherMan(logger zk.Logger, zkCli ZkCli) *zkWatcherMan {
-	ret := &zkWatcherMan{
+func NewZkWatcherMan(logger zk.Logger, zkCli ZkCli) *ZkWatcherMan {
+	ret := &ZkWatcherMan{
 		logger:                logger,
 		zkCli:                 zkCli,
 		dispatcher:            NewZkDispatcher(logger),
@@ -59,7 +60,7 @@ func NewZkWatcherMan(logger zk.Logger, zkCli ZkCli) *zkWatcherMan {
 	return ret
 }
 
-func (m *zkWatcherMan) Start() {
+func (m *ZkWatcherMan) Start() {
 	go func() {
 		backoffDuration := 5 * time.Millisecond
 		sleepBackoff := func() {
@@ -99,16 +100,16 @@ func (m *zkWatcherMan) Start() {
 					success := true
 					switch task := polled.(type) {
 					case deferredChildrenTask:
-						err := m.monitorChildren(true, task.path, task.onchange)
+						err := m.MonitorChildren(true, task.path, task.onchange)
 						if err != nil {
 							success = false
-							m.logger.Printf("monitorChildren %s failed: %s", task.path, err)
+							m.logger.Printf("MonitorChildren %s failed: %s", task.path, err)
 						}
 					case deferredDataTask:
-						err := m.monitorData(true, task.path, task.onchange)
+						err := m.MonitorData(true, task.path, task.onchange)
 						if err != nil {
 							success = false
-							m.logger.Printf("monitorData %s failed: %s", task.path, err)
+							m.logger.Printf("MonitorData %s failed: %s", task.path, err)
 						}
 					default:
 						panic(fmt.Sprintf("Unexpected item in taskqueue %+v", task))
@@ -130,11 +131,11 @@ func (m *zkWatcherMan) Start() {
 	}()
 }
 
-func (m *zkWatcherMan) Close() {
+func (m *ZkWatcherMan) Close() {
 	m.dispatcher.Close()
 }
 
-func (m *zkWatcherMan) enqueueDeferredTask(task interface{}) {
+func (m *ZkWatcherMan) enqueueDeferredTask(task interface{}) {
 	m.deferredTaskMu.Lock()
 	defer m.deferredTaskMu.Unlock()
 	m.deferredRecoveryTasks.add(task)
@@ -146,7 +147,7 @@ func (m *zkWatcherMan) enqueueDeferredTask(task interface{}) {
 	}
 }
 
-func (m *zkWatcherMan) monitorChildren(synch bool, path string, onchange func(children []string) (bool, error)) error {
+func (m *ZkWatcherMan) MonitorChildren(synch bool, path string, onchange func(children []string) (bool, error)) error {
 	if !synch {
 		// Just setup a deferred task and call it a day
 		m.enqueueDeferredTask(deferredChildrenTask{path: path, onchange: onchange})
@@ -168,12 +169,12 @@ func (m *zkWatcherMan) monitorChildren(synch bool, path string, onchange func(ch
 
 	// Setup monitoring
 	f := func(evt zk.Event) <-chan zk.Event {
-		m.logger.Printf("zkWatcherMan children %s: %s", path, evt)
+		m.logger.Printf("ZkWatcherMan children %s: %s", path, evt)
 		children, newWatcher, err := getChildrenAndWatch(m.zkCli, path)
 		if err != nil {
 			if err != zk.ErrClosing {
 				// We failed to set a watch; add a task for the recovery thread to keep trying
-				m.logger.Printf("zkWatcherMan %s: error getting children: %s", path, err)
+				m.logger.Printf("ZkWatcherMan %s: error getting children: %s", path, err)
 				m.enqueueDeferredTask(deferredChildrenTask{path: path, onchange: onchange})
 			}
 			return nil
@@ -181,7 +182,7 @@ func (m *zkWatcherMan) monitorChildren(synch bool, path string, onchange func(ch
 		cont, err := onchange(children)
 		if err != nil {
 			// We failed to call the onchange handler; add a task for the recovery thread to keep trying
-			m.logger.Printf("zkWatcherMan %s: error calling onchange: %s", path, err)
+			m.logger.Printf("ZkWatcherMan %s: error calling onchange: %s", path, err)
 			m.enqueueDeferredTask(deferredChildrenTask{path: path, onchange: onchange})
 			return nil
 		} else if cont {
@@ -194,7 +195,7 @@ func (m *zkWatcherMan) monitorChildren(synch bool, path string, onchange func(ch
 	return nil
 }
 
-func (m *zkWatcherMan) monitorData(synch bool, path string, onchange func(data string, version int32) bool) error {
+func (m *ZkWatcherMan) MonitorData(synch bool, path string, onchange func(data string, version int32) bool) error {
 	if !synch {
 		// Just setup a deferred task and call it a day
 		m.enqueueDeferredTask(deferredDataTask{path: path, onchange: onchange})
@@ -215,12 +216,12 @@ func (m *zkWatcherMan) monitorData(synch bool, path string, onchange func(data s
 	f := func(evt zk.Event) <-chan zk.Event {
 		logger := m.logger
 		zkCli := m.zkCli
-		logger.Printf("zkWatcherMan data %s: %s", path, evt)
+		logger.Printf("ZkWatcherMan data %s: %s", path, evt)
 		data, version, newWatcher, err := getDataAndWatch(zkCli, path)
 		if err != nil {
 			if err != zk.ErrClosing {
 				// We failed to set a watch; add a task for the recovery thread to keep trying
-				logger.Printf("zkWatcherMan %s: error getting data: %s", path, err)
+				logger.Printf("ZkWatcherMan %s: error getting data: %s", path, err)
 				m.enqueueDeferredTask(deferredDataTask{path: path, onchange: onchange})
 			}
 			return nil
@@ -235,6 +236,11 @@ func (m *zkWatcherMan) monitorData(synch bool, path string, onchange func(data s
 	}
 	m.dispatcher.Watch(watcher, f)
 	return nil
+}
+
+// For testing.
+func (m *ZkWatcherMan) RunningProcs() int32 {
+	return atomic.LoadInt32(&m.dispatcher.runningProcs)
 }
 
 func getChildrenAndWatch(zkCli ZkCli, path string) ([]string, <-chan zk.Event, error) {
