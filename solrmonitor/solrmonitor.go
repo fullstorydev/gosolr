@@ -249,7 +249,7 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) {
 }
 
 func (c *SolrMonitor) getZkWatcher(path string) *ZkWatcherMan {
-	idx := int(murmur3.Sum32([]byte(path))) % len(c.zkWatchers)
+	idx := int(murmur3.Sum32([]byte(path)) % uint32(len(c.zkWatchers)))
 	return c.zkWatchers[idx]
 }
 
