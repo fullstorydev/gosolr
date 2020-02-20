@@ -22,6 +22,13 @@ import (
 	"sync/atomic"
 
 	"github.com/samuel/go-zookeeper/zk"
+	"github.com/spaolacci/murmur3"
+)
+
+const (
+	// numWatchers indicates how many different zk watcher loops to spin up.
+	// Each loop is limited by a runtime limit of ~65k watches. Distribute out the watches for performance and reliability.
+	numWatchers = 10
 )
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
@@ -33,7 +40,7 @@ type SolrMonitor struct {
 	collections map[string]*collection // map of all currently-known collections
 	liveNodes   []string               // current set of live_nodes
 
-	zkWatcher *ZkWatcherMan
+	zkWatchers []*ZkWatcherMan
 }
 
 // Minimal interface solrmonitor needs (allows for mock ZK implementations).
@@ -54,12 +61,16 @@ func NewSolrMonitorWithLogger(zkCli ZkCli, logger zk.Logger) (*SolrMonitor, erro
 }
 
 func NewSolrMonitorWithRoot(zkCli ZkCli, logger zk.Logger, solrRoot string) (*SolrMonitor, error) {
+	zkWatchers := make([]*ZkWatcherMan, numWatchers)
+	for i := range zkWatchers {
+		zkWatchers[i] = NewZkWatcherMan(logger, zkCli)
+	}
 	c := &SolrMonitor{
 		logger:      logger,
 		zkCli:       zkCli,
 		solrRoot:    solrRoot,
 		collections: make(map[string]*collection),
-		zkWatcher:   NewZkWatcherMan(logger, zkCli),
+		zkWatchers:  zkWatchers,
 	}
 	err := c.start()
 	if err != nil {
@@ -69,7 +80,9 @@ func NewSolrMonitorWithRoot(zkCli ZkCli, logger zk.Logger, solrRoot string) (*So
 }
 
 func (c *SolrMonitor) Close() {
-	c.zkWatcher.Close()
+	for _, zkWatcher := range c.zkWatchers {
+		zkWatcher.Close()
+	}
 }
 
 func (c *SolrMonitor) GetCurrentState() (ClusterState, error) {
@@ -135,7 +148,7 @@ func (c *SolrMonitor) start() error {
 
 	collectionsPath := c.solrRoot + "/collections"
 	isInit := true
-	err = c.zkWatcher.MonitorChildren(true, collectionsPath, func(children []string) (bool, error) {
+	err = c.getZkWatcher(collectionsPath).MonitorChildren(true, collectionsPath, func(children []string) (bool, error) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		defer func() {
@@ -149,7 +162,7 @@ func (c *SolrMonitor) start() error {
 	}
 
 	liveNodesPath := c.solrRoot + "/live_nodes"
-	err = c.zkWatcher.MonitorChildren(true, liveNodesPath, func(children []string) (bool, error) {
+	err = c.getZkWatcher(collectionsPath).MonitorChildren(true, liveNodesPath, func(children []string) (bool, error) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		c.updateLiveNodes(children)
@@ -235,6 +248,11 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) {
 	c.liveNodes = liveNodes
 }
 
+func (c *SolrMonitor) getZkWatcher(path string) *ZkWatcherMan {
+	idx := int(murmur3.Sum32([]byte(path))) % len(c.zkWatchers)
+	return c.zkWatchers[idx]
+}
+
 // Represents an individual collection.
 type collection struct {
 	mu            sync.RWMutex
@@ -305,7 +323,7 @@ func parseStateData(name string, data []byte, version int32) *parsedCollectionSt
 
 func (coll *collection) start(isInit bool) error {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-	return coll.parent.zkWatcher.MonitorData(isInit, path, func(data string, version int32) bool {
+	return coll.parent.getZkWatcher(path).MonitorData(isInit, path, func(data string, version int32) bool {
 		coll.mu.Lock()
 		defer coll.mu.Unlock()
 		coll.setData(data, version)

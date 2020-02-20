@@ -109,32 +109,19 @@ func disabledTestManual(t *testing.T) {
 	time.Sleep(10 * time.Minute)
 }
 
-// Test we shut down cleanly when the ZK client is closed.
-func TestCleanCloseZk(t *testing.T) {
-	sm, testutil := setup(t)
-	defer testutil.teardown()
-
-	// Create a second ZK connection to swap out for the cleanup process
-	cleanupConn, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5)
-	if err != nil {
-		t.Fatal(err)
-	}
-	conn := testutil.conn
-	testutil.conn = cleanupConn
-
-	getRunningProcs := func() int32 { return atomic.LoadInt32(&sm.zkWatcher.dispatcher.runningProcs) }
-	shouldBecomeEq(t, 1, getRunningProcs)
-	conn.Close()
-	shouldBecomeEq(t, 0, getRunningProcs)
-}
-
 // Test we shut down cleanly when the ClusterState is closed.
 func TestCleanCloseSolrMonitor(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
 
-	getRunningProcs := func() int32 { return atomic.LoadInt32(&sm.zkWatcher.dispatcher.runningProcs) }
-	shouldBecomeEq(t, 1, getRunningProcs)
+	getRunningProcs := func() int32 {
+		var sum int32
+		for _, zkWatcher := range sm.zkWatchers {
+			sum += atomic.LoadInt32(&zkWatcher.dispatcher.runningProcs)
+		}
+		return sum
+	}
+	shouldBecomeEq(t, numWatchers, getRunningProcs)
 	sm.Close()
 	testutil.sm = nil // prevent double close
 	shouldBecomeEq(t, 0, getRunningProcs)
