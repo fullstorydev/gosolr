@@ -56,11 +56,11 @@ func NewZkWatcherMan(logger zk.Logger, zkCli ZkCli) *ZkWatcherMan {
 		dispatcher:            NewZkDispatcher(logger),
 		deferredTasksNotEmpty: make(chan struct{}, 1),
 	}
-	ret.Start()
 	return ret
 }
 
 func (m *ZkWatcherMan) Start() {
+	m.dispatcher.Start()
 	go func() {
 		backoffDuration := 5 * time.Millisecond
 		sleepBackoff := func() {

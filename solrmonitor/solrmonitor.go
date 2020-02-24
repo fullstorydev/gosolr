@@ -172,6 +172,11 @@ func (c *SolrMonitor) start() error {
 		c.logger.Printf("%s: error getting children: %s", liveNodesPath, err)
 		return err
 	}
+
+	for _, watcher := range c.zkWatchers {
+		watcher.Start()
+	}
+
 	return nil
 }
 

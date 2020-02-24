@@ -61,6 +61,13 @@ type ZkDispatcher struct {
 
 	taskMu sync.Mutex
 	tasks  map[ZkEventCallback]*fifoTaskQueue
+
+	startedMu sync.Mutex
+	started   bool
+	// Appended to directly while holding the startedMu lock.
+	// Once started == true, these are transferred over to the main working set and should not longer be modified.
+	startCases    []reflect.SelectCase
+	startHandlers []ZkEventCallback
 }
 
 type newHandler struct {
@@ -80,11 +87,21 @@ func NewZkDispatcher(logger zk.Logger) *ZkDispatcher {
 			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(newHandlerChan)},
 		},
 		selectHandlers: []ZkEventCallback{nil, nil}, // first two correspond to close and new handler channels
-		runningProcs:   1,
 		tasks:          make(map[ZkEventCallback]*fifoTaskQueue),
 	}
-	go d.eventLoop()
 	return d
+}
+
+func (d *ZkDispatcher) Start() {
+	d.startedMu.Lock()
+	defer d.startedMu.Unlock()
+	if d.started {
+		panic("zk dispatcher already started")
+	}
+	d.started = true
+	go d.eventLoop(d.startCases, d.startHandlers)
+	d.startCases = nil
+	d.startHandlers = nil
 }
 
 func (d *ZkDispatcher) Close() {
@@ -103,6 +120,22 @@ func (d *ZkDispatcher) WatchEvent(watcher <-chan zk.Event, handler ZkEventCallba
 		break
 	}
 
+	// Optimization if the dipatcher has not been started yet, we should add the case and handler straight to
+	// the slices to avoid unnecessary channel writing and event loop runs.
+	added := func() bool {
+		d.startedMu.Lock()
+		defer d.startedMu.Unlock()
+		if !d.started {
+			d.startHandlers = append(d.startHandlers, handler)
+			d.startCases = append(d.startCases, newCase(watcher))
+			return true
+		}
+		return false
+	}()
+	if added {
+		return nil
+	}
+
 	select {
 	case <-d.closedChan:
 		return errClosed
@@ -119,8 +152,12 @@ func (d *ZkDispatcher) Watch(watcher <-chan zk.Event, handler ZkEventHandler) er
 	return d.WatchEvent(watcher, &handler)
 }
 
-func (d *ZkDispatcher) eventLoop() {
+func (d *ZkDispatcher) eventLoop(startCases []reflect.SelectCase, startHandlers []ZkEventCallback) {
+	atomic.AddInt32(&d.runningProcs, 1)
 	defer atomic.AddInt32(&d.runningProcs, -1)
+
+	d.selectHandlers = append(d.selectHandlers, startHandlers...)
+	d.selectCases = append(d.selectCases, startCases...)
 
 	for {
 		// first try to drain any new handlers, bailing if dispatcher is closed

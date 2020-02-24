@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/samuel/go-zookeeper/zk"
+
+	"fs/fstesting"
 )
 
 // simple generator of zk.Event objects, with monotonically increasing Type field
@@ -108,27 +110,51 @@ func (cb *testCallback) Handle(e zk.Event) <-chan zk.Event {
 func TestReregistration(t *testing.T) {
 	disp := NewZkDispatcher(zk.DefaultLogger)
 
-	state := testState{t: t, assumeEventOrder: true}
-	cb := state.newCallback(100)
-	state.done.Add(1)
+	firstState := testState{t: t, assumeEventOrder: true}
+	firstCb := firstState.newCallback(35)
+	firstState.done.Add(1)
 
-	channel := make(chan zk.Event, 1)
-	if err := disp.WatchEvent(channel, cb); err != nil {
-		t.Fatalf("failed to watch: %s", err)
-	}
+	secondState := testState{t: t, assumeEventOrder: true}
+	secondCb := secondState.newCallback(100)
+	secondState.done.Add(1)
 
-	channel <- state.gen.newEvent()
-	state.done.Wait()
+	// Should be able to register watches before the dispatcher is started.
+	firstChannel := make(chan zk.Event, 1)
+	err := disp.WatchEvent(firstChannel, firstCb)
+	fstesting.Ok(t, err, "failed to watch")
+	firstChannel <- firstState.gen.newEvent()
 
-	if cb.numEvents != 100 {
-		t.Errorf("Should have processed 100 events but instead processed %d", cb.numEvents)
-	}
+	disp.startedMu.Lock()
+	fstesting.Equals(t, false, disp.started, "should not be started")
+	fstesting.Equals(t, 1, len(disp.startCases), "start case should exist")
+	fstesting.Equals(t, 1, len(disp.startHandlers), "start handler should exist")
+	disp.startedMu.Unlock()
+
+	disp.Start()
+
+	disp.startedMu.Lock()
+	fstesting.Equals(t, true, disp.started, "should be started")
+	fstesting.Equals(t, 0, len(disp.startCases), "start case should not exist")
+	fstesting.Equals(t, 0, len(disp.startHandlers), "start handler should not exist")
+	disp.startedMu.Unlock()
+
+	// And register after it is started.
+	secondChannel := make(chan zk.Event, 1)
+	err = disp.WatchEvent(secondChannel, secondCb)
+	fstesting.Ok(t, err, "failed to watch")
+	secondChannel <- secondState.gen.newEvent()
+
+	firstState.done.Wait()
+	fstesting.Equals(t, 35, firstCb.numEvents, "unexpected number of processed events")
+	secondState.done.Wait()
+	fstesting.Equals(t, 100, secondCb.numEvents, "unexpected number of processed events")
 
 	tasksShouldBecomeEmpty(t, disp)
 }
 
 func TestDispatchesToSameCallbackAreSerial(t *testing.T) {
 	disp := NewZkDispatcher(zk.DefaultLogger)
+	disp.Start()
 	var channels [10]chan zk.Event
 	var run sync.WaitGroup
 	run.Add(1)
@@ -166,6 +192,7 @@ func TestDispatchesToSameCallbackAreSerial(t *testing.T) {
 
 func TestDispatchesToSameNakedFuncAreConcurrent(t *testing.T) {
 	disp := NewZkDispatcher(zk.DefaultLogger)
+	disp.Start()
 	var channels [10]chan zk.Event
 	var run sync.WaitGroup
 	run.Add(1)
@@ -202,6 +229,7 @@ func TestDispatchesToSameNakedFuncAreConcurrent(t *testing.T) {
 
 func TestDispatchesToDifferentCallbacksAreConcurrent(t *testing.T) {
 	disp := NewZkDispatcher(zk.DefaultLogger)
+	disp.Start()
 	var channels [10]chan zk.Event
 	var run, ready sync.WaitGroup
 	run.Add(1)
