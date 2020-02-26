@@ -75,6 +75,10 @@ type newHandler struct {
 	handler ZkEventCallback
 }
 
+// NewZkDispatcher initializes a new instance of ZkDispatcher.
+// Watches may be added to the returned instance at any point.
+// Start must be called before watch handlers will be invoked.
+// It is most efficient to set up all initial watches before making the call to Start.
 func NewZkDispatcher(logger zk.Logger) *ZkDispatcher {
 	closedChan := make(chan struct{})
 	newHandlerChan := make(chan newHandler, 1024)
@@ -92,6 +96,9 @@ func NewZkDispatcher(logger zk.Logger) *ZkDispatcher {
 	return d
 }
 
+// Start runs the event loop initialized with any watches registered up to this point.
+// Watch handlers will only be invoked once the dispatcher has been started.
+// Start may only be called once.
 func (d *ZkDispatcher) Start() {
 	d.startedMu.Lock()
 	defer d.startedMu.Unlock()
@@ -104,6 +111,8 @@ func (d *ZkDispatcher) Start() {
 	d.startHandlers = nil
 }
 
+// Close stops the event loop.
+// Watch handlers will no longer be invoked.
 func (d *ZkDispatcher) Close() {
 	close(d.closedChan)
 }
