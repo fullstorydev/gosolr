@@ -13,6 +13,8 @@ const (
 )
 
 func shouldBecomeEq(t *testing.T, expected int32, actualFunc func() int32) {
+	t.Helper()
+
 	var actual int32
 	for end := time.Now().Add(checkTimeout); time.Now().Before(end); {
 		actual = actualFunc()
@@ -25,6 +27,8 @@ func shouldBecomeEq(t *testing.T, expected int32, actualFunc func() int32) {
 }
 
 func shouldExist(t *testing.T, sm *SolrMonitor, name string) {
+	t.Helper()
+
 	for end := time.Now().Add(checkTimeout); time.Now().Before(end); {
 		collectionState, err := sm.GetCollectionState(name)
 		if err != nil {
@@ -50,6 +54,8 @@ func shouldExist(t *testing.T, sm *SolrMonitor, name string) {
 }
 
 func shouldNotExist(t *testing.T, sm *SolrMonitor, name string) {
+	t.Helper()
+
 	// Wait a moment before checking so we don't false-positive.
 	time.Sleep(200 * time.Millisecond)
 	for end := time.Now().Add(checkTimeout); time.Now().Before(end); {
@@ -77,6 +83,8 @@ func shouldNotExist(t *testing.T, sm *SolrMonitor, name string) {
 }
 
 func shouldError(t *testing.T, sm *SolrMonitor, name string) {
+	t.Helper()
+
 	for end := time.Now().Add(checkTimeout); time.Now().Before(end); {
 		_, err := sm.GetCollectionState(name)
 		if err != nil {

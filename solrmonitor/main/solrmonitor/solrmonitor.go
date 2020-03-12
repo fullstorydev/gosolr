@@ -62,12 +62,11 @@ func run(logger *log.Logger) error {
 
 	logger.Printf("Starting solrmonitor with zkHosts=%v solrZkPath=%s", zkHosts, solrZkPath)
 
-	zooClient, err := NewZkConn(logger, zkHosts)
+	zkWatcher := solrmonitor.NewZkWatcherMan(logger)
+	zooClient, err := NewZkConn(logger, zkHosts, zkWatcher.EventCallback)
 	if err != nil {
 		return smutil.Cherrf(err, "Failed to connect to zookeeper")
 	}
-	defer zooClient.Close()
-
 	zkCli := solrmonitor.ZkCli(zooClient)
 
 	var flakyZk *sexPantherZkCli
@@ -80,7 +79,7 @@ func run(logger *log.Logger) error {
 		zkCli = flakyZk
 	}
 
-	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zkCli, &solrmonitorLogger{logger: logger}, solrZkPath)
+	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zkCli, zkWatcher, &solrmonitorLogger{logger: logger}, solrZkPath)
 	if err != nil {
 		return smutil.Cherrf(err, "Failed to create solrMonitor")
 	}
@@ -118,10 +117,10 @@ func awaitSignal() {
 	signal.Reset(syscall.SIGINT, syscall.SIGTERM)
 }
 
-func NewZkConn(logger *log.Logger, servers []string) (*zk.Conn, error) {
+func NewZkConn(logger *log.Logger, servers []string, cb zk.EventCallback) (*zk.Conn, error) {
 	conn, events, err := zk.Connect(servers, 10*time.Second, func(conn *zk.Conn) {
 		conn.SetLogger(&zookeeperLogger{logger: logger})
-	})
+	}, zk.WithEventCallback(cb))
 	if err != nil {
 		return nil, err
 	}
@@ -141,10 +140,17 @@ loop:
 		}
 	}
 
-	// start a goroutine to log state-change events
 	go func() {
 		for evt := range events {
-			logger.Printf("zk event: %v", evt)
+			if evt.Path != "" {
+				if evt.Err != nil {
+					logger.Printf("zk %s event received for %s with err %v", evt.Type, evt.Path, evt.Err)
+				} else {
+					logger.Printf("zk %s event received for %s", evt.Type, evt.Path)
+				}
+			} else {
+				logger.Printf("zk %s event received with state %s", evt.Type, evt.State)
+			}
 		}
 	}()
 
@@ -226,4 +232,8 @@ func (s *sexPantherZkCli) ExistsW(path string) (bool, *zk.Stat, <-chan zk.Event,
 
 func (s *sexPantherZkCli) State() zk.State {
 	return s.delegate.State()
+}
+
+func (s *sexPantherZkCli) Close() {
+	s.delegate.Close()
 }

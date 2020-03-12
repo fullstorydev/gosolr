@@ -1,5 +1,8 @@
 package solrmonitor
 
+// ugh... seems silly to have to define this
+const maxInt = int(^uint(0) >> 1)
+
 // fifoTaskQueue is a FIFO queue using a ring buffer. A worker goroutine processes elements in
 // a queue. This uses a ring buffer instead of a simpler approach that only uses Go slices
 // (e.g. q = append(q, e) to enqueue; q = q[1:] to dequeue). The simpler approach incurs many more

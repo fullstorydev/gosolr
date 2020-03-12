@@ -18,29 +18,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/samuel/go-zookeeper/zk"
-	"github.com/spaolacci/murmur3"
-)
-
-const (
-	// numWatchers indicates how many different zk watcher loops to spin up.
-	// Each loop is limited by a runtime limit of ~65k watches. Distribute out the watches for performance and reliability.
-	numWatchers = 10
 )
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
 type SolrMonitor struct {
+	logger    zk.Logger // where to debug log
+	zkCli     ZkCli     // the ZK client
+	solrRoot  string    // e.g. "/solr"
+	zkWatcher *ZkWatcherMan
+
 	mu          sync.RWMutex
-	logger      zk.Logger              // where to debug log
-	zkCli       ZkCli                  // the ZK client
-	solrRoot    string                 // e.g. "/solr"
 	collections map[string]*collection // map of all currently-known collections
 	liveNodes   []string               // current set of live_nodes
-
-	zkWatchers []*ZkWatcherMan
 }
 
 // Minimal interface solrmonitor needs (allows for mock ZK implementations).
@@ -50,39 +44,68 @@ type ZkCli interface {
 	GetW(path string) ([]byte, *zk.Stat, <-chan zk.Event, error)
 	ExistsW(path string) (bool, *zk.Stat, <-chan zk.Event, error)
 	State() zk.State
+	Close()
 }
 
-func NewSolrMonitor(zkCli ZkCli) (*SolrMonitor, error) {
-	return NewSolrMonitorWithLogger(zkCli, zk.DefaultLogger)
+// Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
+// will be closed when Solrmonitor is closed, and should not be used by any other caller.
+// The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
+func NewSolrMonitor(zkCli ZkCli, zkWatcher *ZkWatcherMan) (*SolrMonitor, error) {
+	return NewSolrMonitorWithLogger(zkCli, zkWatcher, zk.DefaultLogger)
 }
 
-func NewSolrMonitorWithLogger(zkCli ZkCli, logger zk.Logger) (*SolrMonitor, error) {
-	return NewSolrMonitorWithRoot(zkCli, logger, "/solr")
+// Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
+// will be closed when Solrmonitor is closed, and should not be used by any other caller.
+// The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
+func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger) (*SolrMonitor, error) {
+	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr")
 }
 
-func NewSolrMonitorWithRoot(zkCli ZkCli, logger zk.Logger, solrRoot string) (*SolrMonitor, error) {
-	zkWatchers := make([]*ZkWatcherMan, numWatchers)
-	for i := range zkWatchers {
-		zkWatchers[i] = NewZkWatcherMan(logger, zkCli)
-	}
+// Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
+// will be closed when Solrmonitor is closed, and should not be used by any other caller.
+// The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
+func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrRoot string) (*SolrMonitor, error) {
 	c := &SolrMonitor{
 		logger:      logger,
 		zkCli:       zkCli,
 		solrRoot:    solrRoot,
+		zkWatcher:   zkWatcher,
 		collections: make(map[string]*collection),
-		zkWatchers:  zkWatchers,
 	}
 	err := c.start()
 	if err != nil {
+		c.Close()
 		return nil, err
 	}
 	return c, nil
 }
 
+type callbacks struct {
+	*SolrMonitor
+}
+
+var _ Callbacks = callbacks{}
+
+func (c callbacks) ChildrenChanged(path string, children []string) error {
+	return c.SolrMonitor.childrenChanged(path, children)
+}
+
+func (c callbacks) DataChanged(path string, data string, version int32) error {
+	return c.SolrMonitor.dataChanged(path, data, version)
+}
+
+func (c callbacks) ShouldWatchChildren(path string) bool {
+	// We never unregister any of our children watches.
+	return true
+}
+
+func (c callbacks) ShouldWatchData(path string) bool {
+	return c.SolrMonitor.shouldWatchData(path)
+}
+
 func (c *SolrMonitor) Close() {
-	for _, zkWatcher := range c.zkWatchers {
-		zkWatcher.Close()
-	}
+	c.zkCli.Close()
+	c.zkWatcher.Close()
 }
 
 func (c *SolrMonitor) GetCurrentState() (ClusterState, error) {
@@ -131,6 +154,42 @@ func (c *SolrMonitor) GetLiveNodes() ([]string, error) {
 	return append([]string{}, c.liveNodes...), nil
 }
 
+func (c *SolrMonitor) childrenChanged(path string, children []string) error {
+	switch path {
+	case c.solrRoot + "/collections":
+		return c.updateCollections(children)
+	case c.solrRoot + "/live_nodes":
+		return c.updateLiveNodes(children)
+	default:
+		return fmt.Errorf("solrmonitor: unknown childrenChanged: %s", path)
+	}
+}
+
+func (c *SolrMonitor) dataChanged(path string, data string, version int32) error {
+	if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
+		return fmt.Errorf("unknown dataChanged: %s", path)
+	}
+
+	coll := c.getCollFromPath(path)
+	if coll != nil {
+		coll.setData(data, version)
+	}
+	return nil
+}
+
+func (c *SolrMonitor) shouldWatchData(path string) bool {
+	coll := c.getCollFromPath(path)
+	return coll != nil
+}
+
+func (c *SolrMonitor) getCollFromPath(path string) *collection {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	name := strings.TrimPrefix(path, c.solrRoot+"/collections/")
+	name = strings.TrimSuffix(name, "/state.json")
+	return c.collections[name]
+}
+
 func (c *SolrMonitor) start() error {
 	// Synchronously check the initial calls, then setup event listening.
 
@@ -147,94 +206,68 @@ func (c *SolrMonitor) start() error {
 	}
 
 	collectionsPath := c.solrRoot + "/collections"
-	isInit := true
-	err = c.getZkWatcher(collectionsPath).MonitorChildren(true, collectionsPath, func(children []string) (bool, error) {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		defer func() {
-			isInit = false
-		}()
-		return true, c.updateCollections(children, isInit)
-	})
-	if err != nil {
-		c.logger.Printf("%s: error getting children: %s", collectionsPath, err)
-		return err
-	}
-
 	liveNodesPath := c.solrRoot + "/live_nodes"
-	err = c.getZkWatcher(collectionsPath).MonitorChildren(true, liveNodesPath, func(children []string) (bool, error) {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.updateLiveNodes(children)
-		return true, nil
-	})
-	if err != nil {
-		c.logger.Printf("%s: error getting children: %s", liveNodesPath, err)
+	c.zkWatcher.Start(c.zkCli, callbacks{c})
+	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
 		return err
 	}
-
-	for _, watcher := range c.zkWatchers {
-		watcher.Start()
+	if err := c.zkWatcher.MonitorChildren(liveNodesPath); err != nil {
+		return err
 	}
-
 	return nil
 }
 
-// Update the set of active collections; must hold the lock except during init().
-func (c *SolrMonitor) updateCollections(collections []string, isInit bool) (retErr error) {
+// Update the set of active collections.
+func (c *SolrMonitor) updateCollections(collections []string) error {
 	var logAdded, logRemoved []string
 	logOldSize, logNewSize := len(c.collections), len(collections)
 
-	collectionExists := make(map[string]bool)
-	errChan := make(chan error, 1)
-	var errCount int64
+	var added []*collection
+	func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		collectionExists := map[string]bool{}
 
-	// First, add any collections that don't already exist
+		// First, add any collections that don't already exist
+		for _, name := range collections {
+			collectionExists[name] = true
+			_, found := c.collections[name]
+			if !found {
+				coll := &collection{
+					name:          name,
+					parent:        c,
+					zkNodeVersion: -1,
+				}
+				c.collections[name] = coll
+				added = append(added, coll)
+				logAdded = append(logAdded, name)
+			}
+		}
+
+		// Now remove any collections that disappeared.
+		for name := range c.collections {
+			if !collectionExists[name] {
+				delete(c.collections, name)
+				logRemoved = append(logRemoved, name)
+			}
+		}
+	}()
+
+	// Now start any new collections.
+	var errCount int32
 	var wg sync.WaitGroup
-	if isInit {
-		defer func() {
-			wg.Wait()
-			select {
-			case retErr = <-errChan:
-			default:
+	for _, c := range added {
+		coll := c
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := coll.start(); err != nil {
+				c.parent.logger.Printf("solrmonitor: error starting coll: %s: %s", coll.name, err)
+				atomic.AddInt32(&errCount, 1)
 			}
 		}()
 	}
-	for _, name := range collections {
-		collectionExists[name] = true
-		_, found := c.collections[name]
-		if !found {
-			coll := &collection{
-				name:          name,
-				parent:        c,
-				zkNodeVersion: -1,
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := coll.start(isInit); err != nil {
-					// Only possible to get an error here if isInit = true,
-					// and in this case we can propagate the error all the way back.
-					select {
-					case errChan <- err:
-					default:
-					}
-					atomic.AddInt64(&errCount, 1)
-				}
-			}()
-			c.collections[name] = coll
-			logAdded = append(logAdded, name)
-		}
-	}
-
-	// Now remove any collections that disappeared.
-	for name, coll := range c.collections {
-		if !collectionExists[name] {
-			coll.close()
-			delete(c.collections, name)
-			logRemoved = append(logRemoved, name)
-		}
-	}
+	wg.Wait()
 
 	if len(logAdded) > 10 {
 		logAdded = []string{fmt.Sprintf("(%d) suppressing list", len(logAdded))}
@@ -243,19 +276,21 @@ func (c *SolrMonitor) updateCollections(collections []string, isInit bool) (retE
 		logRemoved = []string{fmt.Sprintf("(%d) suppressing list", len(logRemoved))}
 	}
 
-	c.logger.Printf("solrmonitor (%d) -> (%d) collections; added=%s, removed=%s, errors=%s",
-		logOldSize, logNewSize, logAdded, logRemoved, atomic.LoadInt64(&errCount))
-	return
+	c.logger.Printf("solrmonitor (%d) -> (%d) collections; added=%s, removed=%s, errors=%d",
+		logOldSize, logNewSize, logAdded, logRemoved, errCount)
+
+	if int(errCount) > logNewSize/10 {
+		return fmt.Errorf("%d/%d orgs failed to start", errCount, logNewSize)
+	}
+	return nil
 }
 
-func (c *SolrMonitor) updateLiveNodes(liveNodes []string) {
+func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
 	c.logger.Printf("live_nodes (%d): %s", len(liveNodes), liveNodes)
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.liveNodes = liveNodes
-}
-
-func (c *SolrMonitor) getZkWatcher(path string) *ZkWatcherMan {
-	idx := int(murmur3.Sum32([]byte(path)) % uint32(len(c.zkWatchers)))
-	return c.zkWatchers[idx]
+	return nil
 }
 
 // Represents an individual collection.
@@ -265,7 +300,6 @@ type collection struct {
 	stateData     string       // the current state.json data, or empty if no state.json node exists
 	zkNodeVersion int32        // the version of the state.json data, or -1 if no state.json node exists
 	parent        *SolrMonitor // if nil, this collection object was removed from the ClusterState
-	isClosed      bool
 
 	cachedState *parsedCollectionState // cached of the current parsed stateData if non-nil
 }
@@ -326,32 +360,17 @@ func parseStateData(name string, data []byte, version int32) *parsedCollectionSt
 	return &parsedCollectionState{collectionState: collState}
 }
 
-func (coll *collection) start(isInit bool) error {
+func (coll *collection) start() error {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-	return coll.parent.getZkWatcher(path).MonitorData(isInit, path, func(data string, version int32) bool {
-		coll.mu.Lock()
-		defer coll.mu.Unlock()
-		coll.setData(data, version)
-		return !coll.isClosed
-	})
-}
-
-func (coll *collection) close() {
-	coll.mu.Lock()
-	defer coll.mu.Unlock()
-	coll.isClosed = true
-}
-
-func (coll *collection) IsClosed() bool {
-	coll.mu.RLock()
-	defer coll.mu.RUnlock()
-	return coll.isClosed
+	return coll.parent.zkWatcher.MonitorData(path)
 }
 
 func (coll *collection) setData(data string, version int32) {
 	if data == "" {
 		coll.parent.logger.Printf("%s: no data", coll.name)
 	}
+	coll.mu.Lock()
+	defer coll.mu.Unlock()
 	coll.stateData = data
 	coll.zkNodeVersion = version
 	coll.cachedState = nil

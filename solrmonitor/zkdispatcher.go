@@ -24,9 +24,6 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-// ugh... seems silly to have to define this
-const maxInt = int(^uint(0) >> 1)
-
 // A function that handles a zk event. Optionally returns a new event channel to automatically
 // re-register.
 type ZkEventHandler func(zk.Event) <-chan zk.Event
@@ -51,6 +48,8 @@ type zkDispatchTask struct {
 // run in parallel. A single ZkEventCallback, however, will always be invoked as if from the
 // same goroutine. So a single callback can be used to watch multiple channels and it will receive
 // events in a way that does not require it to synchronize with other possible invocations.
+//
+// Note: this class uses reflective select and is not efficient for very large numbers of watches (>1000).
 type ZkDispatcher struct {
 	logger         zk.Logger            // where to debug log
 	selectCases    []reflect.SelectCase // the list of event channels to watch
@@ -79,6 +78,8 @@ type newHandler struct {
 // Watches may be added to the returned instance at any point.
 // Start must be called before watch handlers will be invoked.
 // It is most efficient to set up all initial watches before making the call to Start.
+//
+// Note: this class uses reflective select and is not efficient for very large numbers of watches (>1000).
 func NewZkDispatcher(logger zk.Logger) *ZkDispatcher {
 	closedChan := make(chan struct{})
 	newHandlerChan := make(chan newHandler, 1024)

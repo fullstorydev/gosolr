@@ -3,9 +3,11 @@ package solrmonitor
 import (
 	"math/rand"
 	"testing"
-
-	"github.com/samuel/go-zookeeper/zk"
 )
+
+type testTask struct {
+	id int
+}
 
 func TestFifoSimple(t *testing.T) {
 	q := fifoTaskQueue{}
@@ -14,10 +16,10 @@ func TestFifoSimple(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		task := g.newTask()
 		q.add(task)
-		if peeked, ok := q.peek(); !ok || !equals(peeked.(zkDispatchTask), task) {
+		if peeked, ok := q.peek(); !ok || !equals(peeked.(testTask), task) {
 			t.Error("Failed to peek task that was just added")
 		}
-		if polled, ok := q.poll(); !ok || !equals(polled.(zkDispatchTask), task) {
+		if polled, ok := q.poll(); !ok || !equals(polled.(testTask), task) {
 			t.Error("Failed to poll task that was just added")
 		}
 
@@ -71,9 +73,8 @@ func TestFifoRingBufferMaintenance(t *testing.T) {
 	}
 }
 
-func equals(task1, task2 zkDispatchTask) bool {
-	// function types are not comparable; we really only need to care about the events
-	return task1.event == task2.event
+func equals(task1, task2 testTask) bool {
+	return task1.id == task2.id
 }
 
 func checkRemove(q *fifoTaskQueue, t *testing.T, removeCount *int) {
@@ -81,22 +82,18 @@ func checkRemove(q *fifoTaskQueue, t *testing.T, removeCount *int) {
 	if !ok {
 		t.Fatalf("Polling from queue failed even though size = %d", q.size)
 	}
-	(*removeCount)++
-	if int(task.(zkDispatchTask).event.Type) != *removeCount {
+	*removeCount++
+	if task.(testTask).id != *removeCount {
 		t.Fatalf("Expecting to have polled %d; instead polled %d",
-			*removeCount, int(task.(zkDispatchTask).event.Type))
+			*removeCount, task.(testTask).id)
 	}
 }
 
 type taskGenerator int
 
-func (g *taskGenerator) newTask() zkDispatchTask {
-	(*g)++
-	handler := ZkEventHandler(func(zk.Event) <-chan zk.Event {
-		return nil
-	})
-	return zkDispatchTask{
-		callback: &handler,
-		event:    zk.Event{Type: zk.EventType(*g)},
+func (g *taskGenerator) newTask() testTask {
+	*g++
+	return testTask{
+		id: int(*g),
 	}
 }

@@ -19,7 +19,6 @@ package solrmonitor
 import (
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,7 +42,6 @@ func (tu *testutil) teardown() {
 	if tu.sm != nil {
 		tu.sm.Close()
 	}
-	tu.conn.Close()
 	tu.logger.AssertNoErrors(tu.t)
 }
 
@@ -62,18 +60,12 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 	root := "/" + callerName
 
 	logger := smtestutil.NewZkTestLogger(t)
+	watcher := NewZkWatcherMan(logger)
 	connOption := func(c *zk.Conn) { c.SetLogger(logger) }
-	conn, zkEvent, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption)
+	conn, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption, zk.WithEventCallback(watcher.EventCallback))
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Keep a running log.
-	go func() {
-		for e := range zkEvent {
-			t.Logf("Global: %s", e)
-		}
-	}()
 
 	// Solrmonitor checks the "clusterstate.json" file in the root node it is given.
 	// So seed that file.
@@ -88,7 +80,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		t.Fatal(err)
 	}
 
-	sm, err := NewSolrMonitorWithRoot(conn, logger, root)
+	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root)
 	if err != nil {
 		conn.Close()
 		t.Fatal(err)
@@ -107,24 +99,6 @@ func disabledTestManual(t *testing.T) {
 	_, testutil := setup(t)
 	defer testutil.teardown()
 	time.Sleep(10 * time.Minute)
-}
-
-// Test we shut down cleanly when the ClusterState is closed.
-func TestCleanCloseSolrMonitor(t *testing.T) {
-	sm, testutil := setup(t)
-	defer testutil.teardown()
-
-	getRunningProcs := func() int32 {
-		var sum int32
-		for _, zkWatcher := range sm.zkWatchers {
-			sum += atomic.LoadInt32(&zkWatcher.dispatcher.runningProcs)
-		}
-		return sum
-	}
-	shouldBecomeEq(t, numWatchers, getRunningProcs)
-	sm.Close()
-	testutil.sm = nil // prevent double close
-	shouldBecomeEq(t, 0, getRunningProcs)
 }
 
 func TestCollectionChanges(t *testing.T) {
@@ -157,7 +131,13 @@ func TestCollectionChanges(t *testing.T) {
 	shouldExist(t, sm, "c1")
 
 	// Get a fresh new solr monitor and make sure it starts in the right state.
-	sm2, err := NewSolrMonitorWithRoot(testutil.conn, testutil.logger, testutil.root)
+	w2 := NewZkWatcherMan(testutil.logger)
+	connOption := func(c *zk.Conn) { c.SetLogger(testutil.logger) }
+	conn2, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption, zk.WithEventCallback(w2.EventCallback))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sm2, err := NewSolrMonitorWithRoot(conn2, w2, testutil.logger, testutil.root)
 	if err != nil {
 		t.Fatal(err)
 	}
