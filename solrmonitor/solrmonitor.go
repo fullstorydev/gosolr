@@ -95,8 +95,7 @@ func (c callbacks) DataChanged(path string, data string, version int32) error {
 }
 
 func (c callbacks) ShouldWatchChildren(path string) bool {
-	// We never unregister any of our children watches.
-	return true
+	return c.SolrMonitor.shouldWatchChildren(path)
 }
 
 func (c callbacks) ShouldWatchData(path string) bool {
@@ -162,6 +161,17 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 		return c.updateLiveNodes(children)
 	default:
 		return fmt.Errorf("solrmonitor: unknown childrenChanged: %s", path)
+	}
+}
+
+func (c *SolrMonitor) shouldWatchChildren(path string) bool {
+	switch path {
+	case c.solrRoot + "/collections":
+		return true
+	case c.solrRoot + "/live_nodes":
+		return true
+	default:
+		return false
 	}
 }
 
