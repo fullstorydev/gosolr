@@ -25,7 +25,7 @@ import (
 
 type Callbacks interface {
 	ChildrenChanged(path string, children []string) error
-	DataChanged(path string, data string, version int32) error
+	DataChanged(path string, data string, stat *zk.Stat) error
 	ShouldWatchChildren(path string) bool
 	ShouldWatchData(path string) bool
 }
@@ -236,7 +236,7 @@ func (m *ZkWatcherMan) MonitorData(path string) error {
 }
 
 func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
-	if data, version, _, err := getDataAndWatch(m.zkCli, path); err != nil {
+	if data, stat, _, err := getDataAndWatch(m.zkCli, path); err != nil {
 		if err == zk.ErrClosing {
 			return nil, nil
 		}
@@ -245,7 +245,7 @@ func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
 		m.enqueueDeferredTask(deferredDataTask{path: path})
 		return err, nil
 	} else {
-		return nil, m.callbacks.DataChanged(path, data, version)
+		return nil, m.callbacks.DataChanged(path, data, stat)
 	}
 }
 
@@ -276,28 +276,28 @@ func getChildrenAndWatch(zkCli ZkCli, path string) ([]string, <-chan zk.Event, e
 	}
 }
 
-func getDataAndWatch(zkCli ZkCli, path string) (string, int32, <-chan zk.Event, error) {
+func getDataAndWatch(zkCli ZkCli, path string) (string, *zk.Stat, <-chan zk.Event, error) {
 	for {
 		data, stat, dataWatch, err := zkCli.GetW(path)
 		if err == nil {
 			// Success, we're done.
-			return string(data), stat.Version, dataWatch, nil
+			return string(data), stat, dataWatch, nil
 		}
 
 		if err == zk.ErrNoNode {
 			// Node doesn't exist; add an existence watch.
 			exists, _, existsWatch, err := zkCli.ExistsW(path)
 			if err != nil {
-				return "", -1, nil, err
+				return "", nil, nil, err
 			}
 			if exists {
 				// Improbable, but possible; first we checked and it wasn't there, then we checked and it was.
 				// Just loop and try again.
 				continue
 			}
-			return "", -1, existsWatch, nil
+			return "", nil, existsWatch, nil
 		}
 
-		return "", -1, nil, err
+		return "", nil, nil, err
 	}
 }

@@ -90,8 +90,8 @@ func (c callbacks) ChildrenChanged(path string, children []string) error {
 	return c.SolrMonitor.childrenChanged(path, children)
 }
 
-func (c callbacks) DataChanged(path string, data string, version int32) error {
-	return c.SolrMonitor.dataChanged(path, data, version)
+func (c callbacks) DataChanged(path string, data string, stat *zk.Stat) error {
+	return c.SolrMonitor.dataChanged(path, data, stat.Version)
 }
 
 func (c callbacks) ShouldWatchChildren(path string) bool {
