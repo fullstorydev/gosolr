@@ -91,7 +91,11 @@ func (c callbacks) ChildrenChanged(path string, children []string) error {
 }
 
 func (c callbacks) DataChanged(path string, data string, stat *zk.Stat) error {
-	return c.SolrMonitor.dataChanged(path, data, stat.Version)
+	version := int32(-1)
+	if stat != nil {
+		version = stat.Version
+	}
+	return c.SolrMonitor.dataChanged(path, data, version)
 }
 
 func (c callbacks) ShouldWatchChildren(path string) bool {
@@ -272,7 +276,7 @@ func (c *SolrMonitor) updateCollections(collections []string) error {
 		go func() {
 			defer wg.Done()
 			if err := coll.start(); err != nil {
-				c.parent.logger.Printf("solrmonitor: error starting coll: %s: %s", coll.name, err)
+				coll.parent.logger.Printf("solrmonitor: error starting coll: %s: %s", coll.name, err)
 				atomic.AddInt32(&errCount, 1)
 			}
 		}()
