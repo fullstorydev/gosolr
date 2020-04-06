@@ -80,6 +80,7 @@ type newHandler struct {
 // It is most efficient to set up all initial watches before making the call to Start.
 //
 // Note: this class uses reflective select and is not efficient for very large numbers of watches (>1000).
+// Deprecated: use NewZkWatcherMan instead
 func NewZkDispatcher(logger zk.Logger) *ZkDispatcher {
 	closedChan := make(chan struct{})
 	newHandlerChan := make(chan newHandler, 1024)
