@@ -27,6 +27,7 @@ type InMemoryStorage struct {
 	mu              sync.RWMutex
 	disabled        bool
 	splitsDisabled  bool
+	tripsDisabled   bool
 	movesDisabled   bool
 	stabbingEnabled bool
 	inProgress      map[string]solrmanapi.OpRecord
@@ -130,6 +131,19 @@ func (s *InMemoryStorage) SetSplitsDisabled(disabled bool) error {
 	defer s.mu.Unlock()
 
 	s.splitsDisabled = disabled
+	return nil
+}
+
+func (s *InMemoryStorage) AreTripsDisabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.tripsDisabled
+}
+
+func (s *InMemoryStorage) SetTripsDisabled(disabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tripsDisabled = disabled
 	return nil
 }
 

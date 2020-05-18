@@ -51,6 +51,9 @@ type SolrManStorage interface {
 	IsSplitsDisabled() bool       // if true, don't do splits
 	SetSplitsDisabled(bool) error // disable splits
 
+	AreTripsDisabled() bool
+	SetTripsDisabled(bool) error
+
 	IsMovesDisabled() bool       // if true, don't do moves
 	SetMovesDisabled(bool) error // disable moves
 

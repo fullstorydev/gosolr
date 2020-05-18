@@ -72,6 +72,10 @@ func (s *ZkStorage) disableSplitsPath() string {
 	return s.root + "/disable_splits"
 }
 
+func (s *ZkStorage) disableTripsPath() string {
+	return s.root + "/disable_trips"
+}
+
 func (s *ZkStorage) disableMovesPath() string {
 	return s.root + "/disable_moves"
 }
@@ -252,6 +256,34 @@ func (s *ZkStorage) IsSplitsDisabled() bool {
 
 func (s *ZkStorage) SetSplitsDisabled(disabled bool) error {
 	path := s.disableSplitsPath()
+	if disabled {
+		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
+		if err != nil && err != zk.ErrNodeExists {
+			return smutil.Cherrf(err, "could not create %s in ZK", path)
+		}
+	} else {
+		err := s.conn.Delete(path, -1)
+		if err != nil && err != zk.ErrNoNode {
+			return smutil.Cherrf(err, "could not delete %s in ZK", path)
+		}
+	}
+	return nil
+}
+
+func (s *ZkStorage) AreTripsDisabled() bool {
+	path := s.disableTripsPath()
+	exists, _, err := s.conn.Exists(path)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
+		}
+		return true // assume disabled if we have an error
+	}
+	return exists
+}
+
+func (s *ZkStorage) SetTripsDisabled(disabled bool) error {
+	path := s.disableTripsPath()
 	if disabled {
 		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
 		if err != nil && err != zk.ErrNodeExists {
