@@ -3,7 +3,7 @@ sudo: false
 
 matrix:
   include:
-    - go: 1.9
+    - go: 1.13
     - go: tip
 
 script:

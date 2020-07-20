@@ -19,8 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"fs/fsmath"
 )
 
 func TestEmptyModel(t *testing.T) {
@@ -148,7 +146,7 @@ func TestLargeModel_EvacuatingNodes(t *testing.T) {
 
 func assertEquals(t *testing.T, expected []string, actual []Move) {
 	t.Helper()
-	for i, c := 0, fsmath.MaxInt(len(expected), len(actual)); i < c; i++ {
+	for i, c := 0, maxInt(len(expected), len(actual)); i < c; i++ {
 		if i >= len(actual) {
 			t.Errorf("at index: %d\nexpected: %s\n  actual: <nil>", i, expected[i])
 		} else if i >= len(expected) {
@@ -156,6 +154,14 @@ func assertEquals(t *testing.T, expected []string, actual []Move) {
 		} else if actual[i].String() != expected[i] {
 			t.Errorf("at index: %d\nexpected: %s\n  actual: %s", i, expected[i], &actual[i])
 		}
+	}
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	} else {
+		return b
 	}
 }
 
