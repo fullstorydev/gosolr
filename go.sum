@@ -1,2 +1,2 @@
-github.com/samuel/go-zookeeper v0.0.0-20190923202752-2cc03de413da h1:p3Vo3i64TCLY7gIfzeQaUJ+kppEO5WQG3cL8iE8tGHU=
-github.com/samuel/go-zookeeper v0.0.0-20190923202752-2cc03de413da/go.mod h1:gi+0XIa01GRL2eRQVjQkKGqKF3SF9vZR/HnPullcV2E=
+github.com/fullstorydev/zk v1.0.3-0.20200828191825-edfcb5d63fdd h1:0lubUEXk7T4Z4fJtam94F9IVGK/k/wFw7jjTMpX0Ke8=
+github.com/fullstorydev/zk v1.0.3-0.20200828191825-edfcb5d63fdd/go.mod h1:8fIOiu6/LYedHuzFUvyuLg0K2kFGSWGrEnsBytyZ9N4=

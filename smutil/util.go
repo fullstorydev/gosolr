@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/samuel/go-zookeeper/zk"
+	"github.com/go-zookeeper/zk"
 )
 
 // ParseNodeName parses a solr node identifier into an IP, a port, and a suffix.
