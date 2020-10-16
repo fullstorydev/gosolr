@@ -2,4 +2,4 @@ module github.com/fullstorydev/gosolr
 
 go 1.13
 
-require github.com/samuel/go-zookeeper v0.0.0-20190923202752-2cc03de413da
+require github.com/fullstorydev/zk v1.0.3-0.20200828191825-edfcb5d63fdd
