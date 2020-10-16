@@ -20,7 +20,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 // Adapts TestLogger to the ZK logging interface. captures errors.

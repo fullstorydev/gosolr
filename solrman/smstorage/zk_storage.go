@@ -23,7 +23,7 @@ import (
 
 	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
-	"github.com/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 func NewZkStorage(conn *zk.Conn, root string, logger smutil.Logger) (*ZkStorage, error) {

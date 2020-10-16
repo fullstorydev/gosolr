@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 type Callbacks interface {

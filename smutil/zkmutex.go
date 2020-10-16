@@ -17,7 +17,7 @@ package smutil
 import (
 	"time"
 
-	"github.com/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 // Acquire the ZK mutex at the given path.  This is designed for mutexes which are usually *uncontended*, not

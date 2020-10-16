@@ -12,7 +12,7 @@ import (
 
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
-	"github.com/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 func TestFindClusterProblems(t *testing.T) {

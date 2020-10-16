@@ -30,7 +30,7 @@ import (
 
 	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrmonitor"
-	"github.com/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 var (

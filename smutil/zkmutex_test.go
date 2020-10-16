@@ -27,7 +27,7 @@ import (
 
 	"github.com/fullstorydev/gosolr/smtestutil"
 	"github.com/fullstorydev/gosolr/smutil"
-	"github.com/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 type testutil struct {
