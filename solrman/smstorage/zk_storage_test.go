@@ -240,3 +240,18 @@ func TestZkStorage_IsStabbingEnabled(t *testing.T) {
 		t.Error("expected stabbing to be enabled")
 	}
 }
+
+func TestZkStorage_IsQueryAggregatorStabbingEnabled(t *testing.T) {
+	s, testutil := setup(t)
+	defer testutil.teardown()
+
+	if s.IsQueryAggregatorStabbingEnabled() {
+		t.Error("expected query aggregator stabbing to be disabled")
+	}
+
+	testutil.create(s.enableQueryAggregatorStabbingPath())
+
+	if !s.IsQueryAggregatorStabbingEnabled() {
+		t.Error("expected query aggregator stabbing to be enabled")
+	}
+}

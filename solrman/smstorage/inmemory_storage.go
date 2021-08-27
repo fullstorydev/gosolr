@@ -30,6 +30,7 @@ type InMemoryStorage struct {
 	tripsDisabled   bool
 	movesDisabled   bool
 	stabbingEnabled bool
+	queryAggregatorStabbingEnabled bool
 	inProgress      map[string]solrmanapi.OpRecord
 	completed       []solrmanapi.OpRecord
 }
@@ -174,5 +175,20 @@ func (s *InMemoryStorage) SetStabbingEnabled(enabled bool) error {
 	defer s.mu.Unlock()
 
 	s.stabbingEnabled = enabled
+	return nil
+}
+
+func (s *InMemoryStorage) IsQueryAggregatorStabbingEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.queryAggregatorStabbingEnabled
+}
+
+func (s *InMemoryStorage) SetQueryAggregatorStabbingEnabled(enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.queryAggregatorStabbingEnabled = enabled
 	return nil
 }

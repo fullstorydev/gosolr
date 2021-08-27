@@ -59,4 +59,7 @@ type SolrManStorage interface {
 
 	IsStabbingEnabled() bool       // if true, Solrman will automatically restart problematic nodes
 	SetStabbingEnabled(bool) error // enable auutomatic node restarts
+
+	IsQueryAggregatorStabbingEnabled() bool // if true, solrman will automatically restart problematic query aggregators
+	SetQueryAggregatorStabbingEnabled(bool) error // enable automatic query aggregator restarts
 }
