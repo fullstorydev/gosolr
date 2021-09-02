@@ -24,15 +24,15 @@ import (
 
 // Reference implementation for testing, don't use in production.
 type InMemoryStorage struct {
-	mu              sync.RWMutex
-	disabled        bool
-	splitsDisabled  bool
-	tripsDisabled   bool
-	movesDisabled   bool
-	stabbingEnabled bool
+	mu                             sync.RWMutex
+	disabled                       bool
+	splitsDisabled                 bool
+	tripsDisabled                  bool
+	movesDisabled                  bool
+	stabbingEnabled                bool
 	queryAggregatorStabbingEnabled bool
-	inProgress      map[string]solrmanapi.OpRecord
-	completed       []solrmanapi.OpRecord
+	inProgress                     map[string]solrmanapi.OpRecord
+	completed                      []solrmanapi.OpRecord
 }
 
 var _ SolrManStorage = &InMemoryStorage{}
