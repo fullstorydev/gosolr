@@ -84,6 +84,10 @@ func (s *ZkStorage) enableStabbingPath() string {
 	return s.root + "/enable_stabbing"
 }
 
+func (s *ZkStorage) enableQueryAggregatorStabbingPath() string {
+	return s.root + "/enable_stabbing_qa"
+}
+
 func (s *ZkStorage) AddInProgressOp(op solrmanapi.OpRecord) error {
 	path := s.inProgressPath() + "/" + op.Key()
 	data := []byte(jsonString(&op))
@@ -340,6 +344,34 @@ func (s *ZkStorage) IsStabbingEnabled() bool {
 
 func (s *ZkStorage) SetStabbingEnabled(enabled bool) error {
 	path := s.enableStabbingPath()
+	if enabled {
+		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
+		if err != nil && err != zk.ErrNodeExists {
+			return smutil.Cherrf(err, "could not create %s in ZK", path)
+		}
+	} else {
+		err := s.conn.Delete(path, -1)
+		if err != nil && err != zk.ErrNoNode {
+			return smutil.Cherrf(err, "could not delete %s in ZK", path)
+		}
+	}
+	return nil
+}
+
+func (s *ZkStorage) IsQueryAggregatorStabbingEnabled() bool {
+	path := s.enableQueryAggregatorStabbingPath()
+	exists, _, err := s.conn.Exists(path)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
+		}
+		return false // assume disabled if we have an error
+	}
+	return exists
+}
+
+func (s *ZkStorage) SetQueryAggregatorStabbingEnabled(enabled bool) error {
+	path := s.enableQueryAggregatorStabbingPath()
 	if enabled {
 		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
 		if err != nil && err != zk.ErrNodeExists {
