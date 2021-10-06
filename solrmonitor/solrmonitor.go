@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -165,7 +166,84 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 		return c.updateLiveNodes(children)
 	default:
 		return fmt.Errorf("solrmonitor: unknown childrenChanged: %s", path)
+		//collectionsPath + "/" + coll.name + "/state.json"
+		if !strings.HasPrefix(path, c.solrRoot + "/collections/") || !strings.HasSuffix(path, "/state.json") {
+			return fmt.Errorf( "solrmonitor: unknown childrenChanged: %s", path)
+		}
+		return c.updateCollectionState(path, children)
 	}
+}
+
+func (c *SolrMonitor) updateCollectionState(path string, children []string) error {
+	coll := c.getCollFromPath(path)
+	if coll == nil || len(children) == 0 {
+		//looks like we have not got the collection event yet; it  should be safe to ignore it
+		return nil
+	}
+
+	rmap := map[string][]string{}
+
+	for i, r := range children {
+		d := strings.Split(r, ":")
+		newv, _ := strconv.ParseInt(d[1], 10, 32)
+
+		if oldrs, found:= rmap[d[0]]; found {
+			oldv, _ := strconv.ParseInt(oldrs[1], 10, 32)
+			if oldv > newv {
+				continue
+			}
+		}
+
+		rmap[d[0]] = d
+		//its a bit hack to keep original data string as it is to pass downstream
+		d[0] = children[i]
+	}
+
+	coll.parent.mu.Lock()
+	defer coll.parent.mu.Unlock()
+
+	add := []string{}
+
+	for _, shard := range coll.cachedState.collectionState.Shards {
+		replicaRemoved := []string{}
+		for lrn, lrs := range shard.Replicas {
+			if rs, found := rmap[lrn]; found {
+				v, _ := strconv.ParseInt(rs[1], 10, 32)
+				if v < int64(lrs.Version) {
+					panic(fmt.Sprintf("Collection {%s} replica %s status version %d should be greator than existing version %d ", coll.name, rs[1], lrs.Version, v))
+				}
+				//if version is more than current then take that state
+				if int32(v) > lrs.Version {
+					lrs.Version = int32(v)
+
+					if rs[2] == "A" {
+						lrs.State = "active"
+					} else if rs[2] == "D" {
+						lrs.State = "down"
+					} else if rs[2] == "R" {
+						lrs.State = "recovering"
+					} else {
+						lrs.State = "inactive"
+					}
+
+					lrs.Leader = "false"
+					if len(rs) == 4 {
+						lrs.Leader = "true"
+					}
+
+					add = append(add, rs[0])
+				}
+			} else {
+				replicaRemoved = append(replicaRemoved, lrn)
+			}
+		}
+		if len(replicaRemoved) > 0 {
+			for _, replica := range replicaRemoved {
+				delete(shard.Replicas, replica)
+			}
+		}
+	}
+	return nil
 }
 
 func (c *SolrMonitor) shouldWatchChildren(path string) bool {
@@ -175,6 +253,9 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	case c.solrRoot + "/live_nodes":
 		return true
 	default:
+		if strings.HasPrefix(path, c.solrRoot + "/collections/") && strings.HasSuffix(path, "/state.json") {
+			return true
+		}
 		return false
 	}
 }
@@ -376,6 +457,11 @@ func parseStateData(name string, data []byte, version int32) *parsedCollectionSt
 
 func (coll *collection) start() error {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
+	//look for childern as well
+	err := coll.parent.zkWatcher.MonitorData(path)
+	if err != nil {
+		return err
+	}
 	return coll.parent.zkWatcher.MonitorData(path)
 }
 
@@ -385,7 +471,27 @@ func (coll *collection) setData(data string, version int32) {
 	}
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
+	newState := parseStateData(coll.name, []byte(coll.stateData), coll.zkNodeVersion)
+	coll.updateReplicaVersionAndState(newState.collectionState, coll.cachedState.collectionState)
 	coll.stateData = data
 	coll.zkNodeVersion = version
-	coll.cachedState = nil
+	coll.cachedState = newState
+}
+
+func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState)  {
+	if oldState == nil {
+		return
+	}
+	for shradName, newShardState := range newState.Shards {
+		oldShardState, found := oldState.Shards[shradName]
+		if found {
+			for replicaName, newReplicasState := range newShardState.Replicas {
+				oldReplicaState, replicaFound :=	oldShardState.Replicas[replicaName]
+				if replicaFound {
+					newReplicasState.Leader = oldReplicaState.Leader
+					newReplicasState.Version = oldReplicaState.Version
+				}
+			}
+		}
+	}
 }

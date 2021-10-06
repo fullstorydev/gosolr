@@ -20,6 +20,7 @@ type ReplicaState struct {
 	NodeName string `json:"node_name"` // e.g. "10.240.110.3:8983_solr"
 	State    string `json:"state"`     // e.g. "active", "inactive", "down", "recovering"
 	Leader   string `json:"leader"`    // e.g. "true" or "false" (yes, these are strings, not bools)
+	Version  int32  `json:"version"`   // e.g. "1" version of replica state
 }
 
 func (r ReplicaState) IsActive() bool {

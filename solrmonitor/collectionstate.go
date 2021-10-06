@@ -26,6 +26,7 @@ type CollectionState struct {
 
 	ConfigName    string `json:"configName,omitempty"`   // the name of the node in solr/configs (in ZK) that this collection uses
 	ZkNodeVersion int32  `json:"znodeVersion,omitempty"` // the ZK node version this state snapshot represents
+	PerReplicaState bool `json:"per_replica_state"` // whether collection keeps state for each replica separately
 }
 
 type Router struct {
