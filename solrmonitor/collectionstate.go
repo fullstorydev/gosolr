@@ -24,9 +24,9 @@ type CollectionState struct {
 	// These fields are synthetic. They ARE present in COLLECTIONSTATUS response in
 	// solr collection API, but they are NOT in state.json docs in Zookeeper.
 
-	ConfigName    string `json:"configName,omitempty"`   // the name of the node in solr/configs (in ZK) that this collection uses
-	ZkNodeVersion int32  `json:"znodeVersion,omitempty"` // the ZK node version this state snapshot represents
-	PerReplicaState bool `json:"per_replica_state"` // whether collection keeps state for each replica separately
+	ConfigName      string `json:"configName,omitempty"`   // the name of the node in solr/configs (in ZK) that this collection uses
+	ZkNodeVersion   int32  `json:"znodeVersion,omitempty"` // the ZK node version this state snapshot represents
+	PerReplicaState bool   `json:"per_replica_state"`      // whether collection keeps state for each replica separately
 }
 
 type Router struct {
