@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -167,8 +167,8 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	default:
 		return fmt.Errorf("solrmonitor: unknown childrenChanged: %s", path)
 		//collectionsPath + "/" + coll.name + "/state.json"
-		if !strings.HasPrefix(path, c.solrRoot + "/collections/") || !strings.HasSuffix(path, "/state.json") {
-			return fmt.Errorf( "solrmonitor: unknown childrenChanged: %s", path)
+		if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
+			return fmt.Errorf("solrmonitor: unknown childrenChanged: %s", path)
 		}
 		return c.updateCollectionState(path, children)
 	}
@@ -187,7 +187,7 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 		d := strings.Split(r, ":")
 		newv, _ := strconv.ParseInt(d[1], 10, 32)
 
-		if oldrs, found:= rmap[d[0]]; found {
+		if oldrs, found := rmap[d[0]]; found {
 			oldv, _ := strconv.ParseInt(oldrs[1], 10, 32)
 			if oldv > newv {
 				continue
@@ -253,7 +253,7 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	case c.solrRoot + "/live_nodes":
 		return true
 	default:
-		if strings.HasPrefix(path, c.solrRoot + "/collections/") && strings.HasSuffix(path, "/state.json") {
+		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
 			return true
 		}
 		return false
@@ -478,7 +478,7 @@ func (coll *collection) setData(data string, version int32) {
 	coll.cachedState = newState
 }
 
-func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState)  {
+func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState) {
 	if oldState == nil {
 		return
 	}
@@ -486,7 +486,7 @@ func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, 
 		oldShardState, found := oldState.Shards[shradName]
 		if found {
 			for replicaName, newReplicasState := range newShardState.Replicas {
-				oldReplicaState, replicaFound :=	oldShardState.Replicas[replicaName]
+				oldReplicaState, replicaFound := oldShardState.Replicas[replicaName]
 				if replicaFound {
 					newReplicasState.Leader = oldReplicaState.Leader
 					newReplicasState.Version = oldReplicaState.Version
