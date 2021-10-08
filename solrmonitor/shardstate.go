@@ -23,10 +23,10 @@ import (
 )
 
 type ShardState struct {
-	Parent   string                  `json:"parent"`
-	Range    string                  `json:"range"` // e.g. "80000000-b332ffff"
-	State    string                  `json:"state"` // e.g. "active", "inactive"
-	Replicas map[string]ReplicaState `json:"replicas,omitempty"`
+	Parent   string                   `json:"parent"`
+	Range    string                   `json:"range"` // e.g. "80000000-b332ffff"
+	State    string                   `json:"state"` // e.g. "active", "inactive"
+	Replicas map[string]*ReplicaState `json:"replicas,omitempty"`
 
 	rangeBounds      bounds
 	rangeInitialized bool
