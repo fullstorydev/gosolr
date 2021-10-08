@@ -43,7 +43,7 @@ type ZkStorage struct {
 var _ SolrManStorage = &ZkStorage{}
 
 func (s *ZkStorage) init() error {
-	for _, path := range []string{s.root, s.inProgressPath(), s.completedPath(), s.evacuatePath()} {
+	for _, path := range []string{s.root, s.inProgressPath(), s.completedPath(), s.evacuatePath(), s.stationaryPath()} {
 		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
 		if err != nil && err != zk.ErrNodeExists {
 			return smutil.Cherrf(err, "could not create %s in ZK", path)
@@ -62,6 +62,10 @@ func (s *ZkStorage) completedPath() string {
 
 func (s *ZkStorage) evacuatePath() string {
 	return s.root + "/evacuate_node_list"
+}
+
+func (s *ZkStorage) stationaryPath() string {
+	return s.root + "/stationary_org_list"
 }
 
 func (s *ZkStorage) disabledPath() string {
@@ -194,6 +198,19 @@ func (s *ZkStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, error) {
 
 func (s *ZkStorage) GetEvacuateNodeList() ([]string, error) {
 	path := s.evacuatePath()
+	children, _, err := s.conn.Children(path)
+	if err == zk.ErrNoNode {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
+	}
+	sort.Strings(children)
+	return children, nil
+}
+
+func (s *ZkStorage) GetStationaryOrgList() ([]string, error) {
+	path := s.stationaryPath()
 	children, _, err := s.conn.Children(path)
 	if err == zk.ErrNoNode {
 		return nil, nil
