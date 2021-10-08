@@ -145,6 +145,7 @@ func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error
 	if coll == nil {
 		return nil, nil
 	}
+
 	return coll.GetData()
 }
 
@@ -165,8 +166,7 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	case c.solrRoot + "/live_nodes":
 		return c.updateLiveNodes(children)
 	default:
-		return fmt.Errorf("solrmonitor: unknown childrenChanged: %s", path)
-		//collectionsPath + "/" + coll.name + "/state.json"
+		//collectionsPath + "/" + coll.name + "/state.json": we want to state.json children
 		if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
 			return fmt.Errorf("solrmonitor: unknown childrenChanged: %s", path)
 		}
@@ -175,84 +175,77 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) error {
+	c.logger.Printf("updateCollectionState: children %s", children )
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
 		return nil
 	}
 
-	rmap := map[string][]string{}
+	rmap := map[string]*PerReplicaState{}
 
-	for i, r := range children {
+	for _, r := range children {
 		d := strings.Split(r, ":")
-		newv, _ := strconv.ParseInt(d[1], 10, 32)
+		version, _ := strconv.ParseInt(d[1], 10, 32)
 
-		if oldrs, found := rmap[d[0]]; found {
-			oldv, _ := strconv.ParseInt(oldrs[1], 10, 32)
-			if oldv > newv {
+		prs := &PerReplicaState{
+			Name:    d[0],
+			Version: int32(version),
+		}
+
+		if d[2] == "A" {
+			prs.State = "active"
+		} else if d[2] == "D" {
+			prs.State = "down"
+		} else if d[2] == "R" {
+			prs.State = "recovering"
+		} else {
+			prs.State = "inactive"
+		}
+
+		prs.Leader = "false"
+		if len(d) == 4 {
+			prs.Leader = "true"
+		}
+
+		//keep ths latest prs
+		if currentPrs, found := rmap[prs.Name]; found {
+			if currentPrs.Version >= prs.Version {
 				continue
 			}
 		}
 
-		rmap[d[0]] = d
-		//its a bit hack to keep original data string as it is to pass downstream
-		d[0] = children[i]
+		rmap[prs.Name] = prs
 	}
 
 	coll.parent.mu.Lock()
 	defer coll.parent.mu.Unlock()
-
-	add := []string{}
-
+	//update the collection state based on new PRS (per replica state)
 	for _, shard := range coll.cachedState.collectionState.Shards {
-		replicaRemoved := []string{}
-		for lrn, lrs := range shard.Replicas {
-			if rs, found := rmap[lrn]; found {
-				v, _ := strconv.ParseInt(rs[1], 10, 32)
-				if v < int64(lrs.Version) {
-					panic(fmt.Sprintf("Collection {%s} replica %s status version %d should be greator than existing version %d ", coll.name, rs[1], lrs.Version, v))
-				}
+		for rname, rstate := range shard.Replicas {
+			if prs, found := rmap[rname]; found {
 				//if version is more than current then take that state
-				if int32(v) > lrs.Version {
-					lrs.Version = int32(v)
-
-					if rs[2] == "A" {
-						lrs.State = "active"
-					} else if rs[2] == "D" {
-						lrs.State = "down"
-					} else if rs[2] == "R" {
-						lrs.State = "recovering"
-					} else {
-						lrs.State = "inactive"
-					}
-
-					lrs.Leader = "false"
-					if len(rs) == 4 {
-						lrs.Leader = "true"
-					}
-
-					add = append(add, rs[0])
+				if prs.Version > rstate.Version {
+					rstate.Version = prs.Version
+					rstate.Leader = prs.Leader
+					rstate.State = prs.State
 				}
-			} else {
-				replicaRemoved = append(replicaRemoved, lrn)
-			}
-		}
-		if len(replicaRemoved) > 0 {
-			for _, replica := range replicaRemoved {
-				delete(shard.Replicas, replica)
 			}
 		}
 	}
+
 	return nil
 }
 
 func (c *SolrMonitor) shouldWatchChildren(path string) bool {
+	c.logger.Printf("shouldWatchChildren: path [%s]", path)
 	switch path {
 	case c.solrRoot + "/collections":
 		return true
 	case c.solrRoot + "/live_nodes":
 		return true
 	default:
+		// watch coll/state.json childrens for replica status
 		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
 			return true
 		}
@@ -268,8 +261,25 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	coll := c.getCollFromPath(path)
 	if coll != nil {
 		coll.setData(data, version)
+		coll.startMonitoringReplicaStatus()
 	}
 	return nil
+}
+
+func (coll *collection) startMonitoringReplicaStatus() {
+	coll.mu.Lock()
+	defer coll.mu.Unlock()
+
+	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
+
+	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
+	if coll.cachedState.collectionState != nil && !coll.isWatched && coll.cachedState.collectionState.PerReplicaState == "true" {
+		err := coll.parent.zkWatcher.MonitorChildren(path)
+		if err == nil {
+			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
+			coll.isWatched = true
+		}
+	}
 }
 
 func (c *SolrMonitor) shouldWatchData(path string) bool {
@@ -392,11 +402,11 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
 type collection struct {
 	mu            sync.RWMutex
 	name          string       // the name of the collection
-	stateData     string       // the current state.json data, or empty if no state.json node exists
 	zkNodeVersion int32        // the version of the state.json data, or -1 if no state.json node exists
 	parent        *SolrMonitor // if nil, this collection object was removed from the ClusterState
 
 	cachedState *parsedCollectionState // cached of the current parsed stateData if non-nil
+	isWatched   bool
 }
 
 type parsedCollectionState struct {
@@ -411,21 +421,6 @@ func (coll *collection) GetData() (*CollectionState, error) {
 		defer coll.mu.RUnlock()
 		return coll.cachedState
 	}()
-
-	if cachedState == nil {
-		cachedState = func() *parsedCollectionState {
-			coll.mu.Lock()
-			defer coll.mu.Unlock()
-
-			// Could have been initialized in between our first read and getting the write lock.
-			if coll.cachedState == nil {
-				coll.cachedState = parseStateData(coll.name, []byte(coll.stateData), coll.zkNodeVersion)
-			}
-
-			return coll.cachedState
-		}()
-	}
-
 	return cachedState.collectionState, cachedState.err
 }
 
@@ -457,11 +452,6 @@ func parseStateData(name string, data []byte, version int32) *parsedCollectionSt
 
 func (coll *collection) start() error {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-	//look for childern as well
-	err := coll.parent.zkWatcher.MonitorData(path)
-	if err != nil {
-		return err
-	}
 	return coll.parent.zkWatcher.MonitorData(path)
 }
 
@@ -471,15 +461,19 @@ func (coll *collection) setData(data string, version int32) {
 	}
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
-	newState := parseStateData(coll.name, []byte(coll.stateData), coll.zkNodeVersion)
-	coll.updateReplicaVersionAndState(newState.collectionState, coll.cachedState.collectionState)
-	coll.stateData = data
+	// we need to parse data here as we need to know PRS is enable for collection ot not; if enable then keep watch on coll/state.json children
+	newState := parseStateData(coll.name, []byte(data), coll.zkNodeVersion)
+	var oldState *CollectionState = nil
+	if coll.cachedState != nil {
+		oldState = coll.cachedState.collectionState
+	}
+	coll.updateReplicaVersionAndState(newState.collectionState, oldState)
 	coll.zkNodeVersion = version
 	coll.cachedState = newState
 }
 
 func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState) {
-	if oldState == nil {
+	if oldState == nil || newState == nil {
 		return
 	}
 	for shradName, newShardState := range newState.Shards {
