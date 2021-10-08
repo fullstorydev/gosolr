@@ -43,7 +43,7 @@ type SolrManStorage interface {
 
 	// Returns a list of solr nodes that should be evacuated (e.g. move cores off these nodes onto other nodes)
 	GetEvacuateNodeList() ([]string, error)
-  
+
   // Returns a list of solr orgs that should not be split or moved.
   GetStationaryOrgList() ([]string, error)
 
@@ -63,6 +63,6 @@ type SolrManStorage interface {
 	IsStabbingEnabled() bool       // if true, Solrman will automatically restart problematic nodes
 	SetStabbingEnabled(bool) error // enable auutomatic node restarts
 
- 	IsQueryAggregatorStabbingEnabled() bool       // if true, solrman will automatically restart problematic query aggregators
+	IsQueryAggregatorStabbingEnabled() bool       // if true, solrman will automatically restart problematic query aggregators
 	SetQueryAggregatorStabbingEnabled(bool) error // enable automatic query aggregator restarts
 }
