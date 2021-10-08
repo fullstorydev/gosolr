@@ -100,6 +100,13 @@ func (s *InMemoryStorage) GetEvacuateNodeList() ([]string, error) {
 	return nil, nil
 }
 
+func (s *InMemoryStorage) GetStationaryOrgList() ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return nil, nil
+}
+
 func (s *InMemoryStorage) IsDisabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

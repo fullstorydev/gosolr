@@ -59,4 +59,7 @@ type SolrManStorage interface {
 
 	IsStabbingEnabled() bool       // if true, Solrman will automatically restart problematic nodes
 	SetStabbingEnabled(bool) error // enable auutomatic node restarts
+
+  // Returns a list of solr orgs that should not be split or moved.
+  GetStationaryOrgList() ([]string, error)
 }
