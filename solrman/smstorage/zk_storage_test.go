@@ -25,7 +25,7 @@ import (
 
 	"github.com/fullstorydev/gosolr/smtestutil"
 	"github.com/fullstorydev/gosolr/smutil"
-	"github.com/samuel/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 type testutil struct {
@@ -238,5 +238,20 @@ func TestZkStorage_IsStabbingEnabled(t *testing.T) {
 
 	if !s.IsStabbingEnabled() {
 		t.Error("expected stabbing to be enabled")
+	}
+}
+
+func TestZkStorage_IsQueryAggregatorStabbingEnabled(t *testing.T) {
+	s, testutil := setup(t)
+	defer testutil.teardown()
+
+	if s.IsQueryAggregatorStabbingEnabled() {
+		t.Error("expected query aggregator stabbing to be disabled")
+	}
+
+	testutil.create(s.enableQueryAggregatorStabbingPath())
+
+	if !s.IsQueryAggregatorStabbingEnabled() {
+		t.Error("expected query aggregator stabbing to be enabled")
 	}
 }

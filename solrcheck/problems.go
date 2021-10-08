@@ -10,7 +10,7 @@ import (
 
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
 	"github.com/fullstorydev/gosolr/solrmonitor"
-	"github.com/samuel/go-zookeeper/zk"
+	"github.com/fullstorydev/zk"
 )
 
 // ClusterProblem represents an issue identified with the current solr cluster status.
