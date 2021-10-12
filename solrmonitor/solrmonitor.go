@@ -415,6 +415,10 @@ type parsedCollectionState struct {
 	err             error            // if non-nil, the error generated parsing stateData
 }
 
+func (pcs *parsedCollectionState) String() string {
+	return fmt.Sprintf("parsedCollectionState{collectionState:%+v}", pcs.collectionState)
+}
+
 // Returns the current collection state data.
 func (coll *collection) GetData() (*CollectionState, error) {
 	cachedState := func() *parsedCollectionState {
