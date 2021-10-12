@@ -14,6 +14,8 @@
 
 package solrmonitor
 
+import "fmt"
+
 type CollectionState struct {
 	Shards            map[string]*ShardState `json:"shards"`            // map from shard name to shard state
 	ReplicationFactor string                 `json:"replicationFactor"` // e.g. "1" (yes, these are strings, not numbers)
@@ -27,6 +29,10 @@ type CollectionState struct {
 	ConfigName      string `json:"configName,omitempty"`   // the name of the node in solr/configs (in ZK) that this collection uses
 	ZkNodeVersion   int32  `json:"znodeVersion,omitempty"` // the ZK node version this state snapshot represents
 	PerReplicaState string `json:"perReplicaState"`        // whether collection keeps state for each replica separately
+}
+
+func (cs *CollectionState) String() string {
+	return fmt.Sprintf("CollectionState{Shards:%+v, PerReplicaState:%s}", cs.Shards, cs.PerReplicaState)
 }
 
 type Router struct {
