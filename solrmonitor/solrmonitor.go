@@ -175,7 +175,7 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) error {
-	c.logger.Printf("updateCollectionState: children %s", children )
+	c.logger.Printf("Hitesh:updateCollectionState: children %s", children )
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
@@ -217,7 +217,7 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 
 		rmap[prs.Name] = prs
 	}
-
+	c.logger.Printf("Hitesh:updateCollectionState PRS %+v", rmap)
 	coll.parent.mu.Lock()
 	defer coll.parent.mu.Unlock()
 	//update the collection state based on new PRS (per replica state)
@@ -232,6 +232,7 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 				}
 			}
 		}
+		c.logger.Printf("Hitesh:updateCollectionState collection added %+v", shard)
 	}
 
 	return nil
@@ -357,7 +358,7 @@ func (c *SolrMonitor) updateCollections(collections []string) error {
 			}
 		}
 	}()
-
+	c.logger.Printf("Hitesh:updateCollections collection added %s", added)
 	// Now start any new collections.
 	var errCount int32
 	var wg sync.WaitGroup
@@ -463,11 +464,13 @@ func (coll *collection) setData(data string, version int32) {
 	defer coll.mu.Unlock()
 	// we need to parse data here as we need to know PRS is enable for collection ot not; if enable then keep watch on coll/state.json children
 	newState := parseStateData(coll.name, []byte(data), coll.zkNodeVersion)
+	coll.parent.logger.Printf("Hitesh:setData collection newstate %+v", newState)
 	var oldState *CollectionState = nil
 	if coll.cachedState != nil {
 		oldState = coll.cachedState.collectionState
 	}
 	coll.updateReplicaVersionAndState(newState.collectionState, oldState)
+	coll.parent.logger.Printf("Hitesh:setData collection updated newstate %+v", newState)
 	coll.zkNodeVersion = version
 	coll.cachedState = newState
 }
