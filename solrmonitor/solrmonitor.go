@@ -488,6 +488,8 @@ func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, 
 				oldReplicaState, replicaFound := oldShardState.Replicas[replicaName]
 				if replicaFound {
 					newReplicasState.Version = oldReplicaState.Version
+					newReplicasState.State = oldReplicaState.State
+					newReplicasState.Leader = oldReplicaState.Leader
 				}
 			}
 		}
