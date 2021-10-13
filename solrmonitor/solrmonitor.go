@@ -463,6 +463,8 @@ func (coll *collection) start() error {
 func (coll *collection) setData(data string, version int32) {
 	if data == "" {
 		coll.parent.logger.Printf("%s: no data", coll.name)
+	} else {
+		coll.parent.logger.Printf("Hitesh:setData data %s", data)
 	}
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
