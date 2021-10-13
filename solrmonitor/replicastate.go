@@ -26,7 +26,7 @@ type ReplicaState struct {
 }
 
 func (s *ReplicaState) String() string {
-	return fmt.Sprintf("ReplicaState{Core:%s, BaseUrl:%s, NodeName=%s, State=%s, Leader=%s, Version=%d}", s.Core, s.BaseUrl, s.NodeName, s.State, s.Leader, s.Version)
+	return fmt.Sprintf("\nReplicaState{Core:%s, BaseUrl:%s, NodeName=%s, State=%s, Leader=%s, Version=%d}\n", s.Core, s.BaseUrl, s.NodeName, s.State, s.Leader, s.Version)
 }
 
 func (r ReplicaState) IsActive() bool {

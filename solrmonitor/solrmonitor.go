@@ -217,7 +217,6 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 
 		rmap[prs.Name] = prs
 	}
-	c.logger.Printf("Hitesh:updateCollectionState PRS %+v", rmap)
 	coll.parent.mu.Lock()
 	defer coll.parent.mu.Unlock()
 	//update the collection state based on new PRS (per replica state)
@@ -232,14 +231,14 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 				}
 			}
 		}
-		c.logger.Printf("Hitesh:updateCollectionState collection added %+v", shard)
 	}
+	c.logger.Printf("Hitesh:updateCollectionState collection added %+v", coll.cachedState.collectionState)
 
 	return nil
 }
 
 func (c *SolrMonitor) shouldWatchChildren(path string) bool {
-	c.logger.Printf("shouldWatchChildren: path [%s]", path)
+	c.logger.Printf("Hitesh:shouldWatchChildren: path [%s]", path)
 	switch path {
 	case c.solrRoot + "/collections":
 		return true
@@ -258,7 +257,7 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
 		return fmt.Errorf("unknown dataChanged: %s", path)
 	}
-
+	c.logger.Printf("Hitesh:dataChanged %s", path)
 	coll := c.getCollFromPath(path)
 	if coll != nil {
 		coll.setData(data, version)
@@ -277,7 +276,7 @@ func (coll *collection) startMonitoringReplicaStatus() {
 	if coll.cachedState.collectionState != nil && !coll.isWatched && coll.cachedState.collectionState.PerReplicaState == "true" {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
-			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
+			coll.parent.logger.Printf("Hitesh:startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
 			coll.isWatched = true
 		}
 	}
@@ -416,7 +415,7 @@ type parsedCollectionState struct {
 }
 
 func (pcs *parsedCollectionState) String() string {
-	return fmt.Sprintf("parsedCollectionState{collectionState:%+v}", pcs.collectionState)
+	return fmt.Sprintf("\nparsedCollectionState{collectionState:%+v}\n", pcs.collectionState)
 }
 
 // Returns the current collection state data.
@@ -463,14 +462,11 @@ func (coll *collection) start() error {
 func (coll *collection) setData(data string, version int32) {
 	if data == "" {
 		coll.parent.logger.Printf("%s: no data", coll.name)
-	} else {
-		coll.parent.logger.Printf("Hitesh:setData data %s", data)
 	}
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
 	// we need to parse data here as we need to know PRS is enable for collection ot not; if enable then keep watch on coll/state.json children
 	newState := parseStateData(coll.name, []byte(data), coll.zkNodeVersion)
-	coll.parent.logger.Printf("Hitesh:setData collection newstate %+v", newState)
 	var oldState *CollectionState = nil
 	if coll.cachedState != nil {
 		oldState = coll.cachedState.collectionState
