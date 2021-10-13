@@ -32,7 +32,7 @@ type CollectionState struct {
 }
 
 func (cs *CollectionState) String() string {
-	return fmt.Sprintf("CollectionState{Shards:%+v, PerReplicaState:%s}", cs.Shards, cs.PerReplicaState)
+	return fmt.Sprintf("CollectionState\n{Shards:%+v, PerReplicaState:%s}\n", cs.Shards, cs.PerReplicaState)
 }
 
 type Router struct {
