@@ -133,7 +133,7 @@ func TestCollectionChanges(t *testing.T) {
 	shard, _ := collectionState.Shards["shard_1"]
 	rep, _ := shard.Replicas["R1"]
 
-	if rep.Leader != "true" {
+	if rep.Leader != "false" {
 		t.Fatalf("replica is not leader %+v", rep)
 	}
 
@@ -153,7 +153,7 @@ func TestCollectionChanges(t *testing.T) {
 	shouldExist(t, sm2, "c1")
 }
 
-func DTestPRSProtocol(t *testing.T) {
+func TestPRSProtocol(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
 
@@ -231,7 +231,7 @@ func DTestPRSProtocol(t *testing.T) {
 	prsShouldExist(t, sm, "c1", "shard_1_1", "R1_1", "active", "true", 1)
 }
 
-func DTestBadStateJson(t *testing.T) {
+func TestBadStateJson(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
 

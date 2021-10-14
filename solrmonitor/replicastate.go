@@ -25,8 +25,8 @@ type ReplicaState struct {
 	Version  int32  `json:"version"`   // e.g. "1" version of replica state
 }
 
-func (s *ReplicaState) String() string {
-	return fmt.Sprintf("\nReplicaState{Core:%s, BaseUrl:%s, NodeName=%s, State=%s, Leader=%s, Version=%d}\n", s.Core, s.BaseUrl, s.NodeName, s.State, s.Leader, s.Version)
+func (r *ReplicaState) String() string {
+	return fmt.Sprintf("\nReplicaState{Core:%s, BaseUrl:%s, NodeName=%s, State=%s, Leader=%s, Version=%d}\n", r.Core, r.BaseUrl, r.NodeName, r.State, r.Leader, r.Version)
 }
 
 func (r ReplicaState) IsActive() bool {
