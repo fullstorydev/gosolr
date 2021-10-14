@@ -478,7 +478,7 @@ func (coll *collection) setData(data string, version int32) {
 }
 
 func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState) {
-	if oldState == nil || newState == nil {
+	if oldState == nil || newState == nil || newState.PerReplicaState == "false" {
 		return
 	}
 	for shradName, newShardState := range newState.Shards {
