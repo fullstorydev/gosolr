@@ -175,7 +175,7 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) error {
-	c.logger.Printf("Hitesh:updateCollectionState: children %s", children )
+	c.logger.Printf("updateCollectionState: children %s", children )
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
@@ -232,13 +232,11 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 			}
 		}
 	}
-	c.logger.Printf("Hitesh:updateCollectionState collection added %+v", coll.cachedState.collectionState)
 
 	return nil
 }
 
 func (c *SolrMonitor) shouldWatchChildren(path string) bool {
-	c.logger.Printf("Hitesh:shouldWatchChildren: path [%s]", path)
 	switch path {
 	case c.solrRoot + "/collections":
 		return true
@@ -247,7 +245,7 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	default:
 		// watch coll/state.json childrens for replica status
 		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
-			return true
+			return c.getCollFromPath(path) != nil
 		}
 		return false
 	}
@@ -257,7 +255,6 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
 		return fmt.Errorf("unknown dataChanged: %s", path)
 	}
-	c.logger.Printf("Hitesh:dataChanged %s", path)
 	coll := c.getCollFromPath(path)
 	if coll != nil {
 		coll.setData(data, version)
@@ -276,7 +273,7 @@ func (coll *collection) startMonitoringReplicaStatus() {
 	if coll.cachedState.collectionState != nil && !coll.isWatched && coll.cachedState.collectionState.PerReplicaState == "true" {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
-			coll.parent.logger.Printf("Hitesh:startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
+			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
 			coll.isWatched = true
 		}
 	}
@@ -357,7 +354,6 @@ func (c *SolrMonitor) updateCollections(collections []string) error {
 			}
 		}
 	}()
-	c.logger.Printf("Hitesh:updateCollections collection added %s", added)
 	// Now start any new collections.
 	var errCount int32
 	var wg sync.WaitGroup
@@ -472,7 +468,6 @@ func (coll *collection) setData(data string, version int32) {
 		oldState = coll.cachedState.collectionState
 	}
 	coll.updateReplicaVersionAndState(newState.collectionState, oldState)
-	coll.parent.logger.Printf("Hitesh:setData collection updated newstate %+v", newState)
 	coll.zkNodeVersion = version
 	coll.cachedState = newState
 }

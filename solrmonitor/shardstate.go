@@ -38,8 +38,8 @@ type bounds struct {
 	err error
 }
 
-func (ss *ShardState) String() string {
-	return fmt.Sprintf("\nShardState{Range:%s, State:%s, Replicas=%+v, rangeBounds=%+v}\n", ss.Range, ss.State, ss.Replicas, ss.rangeBounds)
+func (s *ShardState) String() string {
+	return fmt.Sprintf("\nShardState{Range:%s, State:%s, Replicas=%+v, rangeBounds=%+v}\n", s.Range, s.State, s.Replicas, s.rangeBounds)
 }
 
 func (s ShardState) IsActive() bool {
