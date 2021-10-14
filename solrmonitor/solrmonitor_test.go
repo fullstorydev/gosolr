@@ -123,12 +123,19 @@ func TestCollectionChanges(t *testing.T) {
 
 	shouldNotExist(t, sm, "c1")
 
-	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{}}"), -1)
+	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{ \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\", \"Base_url\":\"solr\", \"node_name\":\"8984_solr\", \"state\":\"active\", \"leader\":\"false\", \"type\": \"NRT\", \"force_set_state\":\"false\"}}}}}}"), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	shouldExist(t, sm, "c1")
+	collectionState, _ := sm.GetCollectionState("c1")
+	shard, _ := collectionState.Shards["shard_1"]
+	rep, _ := shard.Replicas["R1"]
+
+	if rep.Leader != "false" {
+		t.Fatalf("replica is not leader %+v", rep)
+	}
 
 	// Get a fresh new solr monitor and make sure it starts in the right state.
 	w2 := NewZkWatcherMan(testutil.logger)
@@ -144,6 +151,84 @@ func TestCollectionChanges(t *testing.T) {
 	defer sm2.Close()
 
 	shouldExist(t, sm2, "c1")
+}
+
+func TestPRSProtocol(t *testing.T) {
+	sm, testutil := setup(t)
+	defer testutil.teardown()
+
+	shouldNotExist(t, sm, "c1")
+
+	zkCli := testutil.conn
+	zkCli.Create(sm.solrRoot+"/collections", nil, 0, zk.WorldACL(zk.PermAll))
+	_, err := zkCli.Create(sm.solrRoot+"/collections/c1", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shouldNotExist(t, sm, "c1")
+
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shouldNotExist(t, sm, "c1")
+
+	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"true\",	 \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\"}}}}}}"), -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shouldExist(t, sm, "c1")
+
+	// 1. adding PRS for replica R1, version 1, state down
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:1:D", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prsShouldExist(t, sm, "c1", "shard_1", "R1", "down", "false", 1)
+
+	// 2. adding PRS for replica R1, version 1 -same, state active => should ignore as same version
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:1:R", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prsShouldExist(t, sm, "c1", "shard_1", "R1", "down", "false", 1)
+
+	// 3. adding PRS for replica R1, version 2, state active
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:2:A", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "false", 2)
+
+	// 4. adding PRS for replica R1, version 3, state active and leader
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:3:A:L", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "true", 3)
+
+	//5. split shard
+	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"true\",	 \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\"}}}, \"shard_1_0\":{\"replicas\":{\"R1_0\":{\"core\":\"core1\"}}}, \"shard_1_1\":{\"replicas\":{\"R1_1\":{\"core\":\"core1\"}}}}}}"), -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 6. replica R1_0 should exist
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1_0:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prsShouldExist(t, sm, "c1", "shard_1_0", "R1_0", "active", "true", 1)
+
+	// 7. replica R1_1 should exist
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1_1:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prsShouldExist(t, sm, "c1", "shard_1_1", "R1_1", "active", "true", 1)
 }
 
 func TestBadStateJson(t *testing.T) {

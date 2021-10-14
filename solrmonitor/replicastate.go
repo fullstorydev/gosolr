@@ -14,12 +14,19 @@
 
 package solrmonitor
 
+import "fmt"
+
 type ReplicaState struct {
 	Core     string `json:"core"`      // e.g. "delta_shard1_replica1"
 	BaseUrl  string `json:"base_url"`  // e.g. "http://10.240.110.3:8983/solr"
 	NodeName string `json:"node_name"` // e.g. "10.240.110.3:8983_solr"
 	State    string `json:"state"`     // e.g. "active", "inactive", "down", "recovering"
 	Leader   string `json:"leader"`    // e.g. "true" or "false" (yes, these are strings, not bools)
+	Version  int32  `json:"version"`   // e.g. "1" version of replica state
+}
+
+func (r *ReplicaState) String() string {
+	return fmt.Sprintf("\nReplicaState{Core:%s, BaseUrl:%s, NodeName=%s, State=%s, Leader=%s, Version=%d}\n", r.Core, r.BaseUrl, r.NodeName, r.State, r.Leader, r.Version)
 }
 
 func (r ReplicaState) IsActive() bool {
