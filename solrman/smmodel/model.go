@@ -110,7 +110,7 @@ func (m *Model) WithMove(move Move) *Model {
 	}
 }
 
-func (m *Model) computeNextMove(mustEvacuate bool, immobileCores []bool) *Move {
+func (m *Model) computeNextMove(immobileCores []bool) *Move {
 	if len(m.Nodes) < 2 || len(m.Cores) < 1 {
 		// can't balance a single-node or empty cluster
 		return nil
@@ -148,10 +148,9 @@ func (m *Model) computeNextMove(mustEvacuate bool, immobileCores []bool) *Move {
 			to := m.Nodes[last.nodeId]
 
 			// Move from the node that:
-			// - is evacuating
 			// - has more cores in the collection
 			// - is on the larger node
-			if to.Evacuating || bi.coresPerNode[to.id] > bi.coresPerNode[from.id] || to.Size > from.Size {
+			if bi.coresPerNode[to.id] > bi.coresPerNode[from.id] || to.Size > from.Size {
 				from, to = to, from
 				core = last
 			}
@@ -173,7 +172,7 @@ func (m *Model) computeNextMove(mustEvacuate bool, immobileCores []bool) *Move {
 	// Try to move a core from the given node.
 	tryMoveCoreFrom := func(source *Node, force bool) *Move {
 		for _, target := range nodesBySize {
-			if target.Evacuating || target == source {
+			if target == source {
 				continue
 			}
 
@@ -229,16 +228,7 @@ func (m *Model) computeNextMove(mustEvacuate bool, immobileCores []bool) *Move {
 		return nil
 	}
 
-	// Step 2: evacuate nodes first, respecting least-harm for collection and node balance.
-	if mustEvacuate {
-		for _, node := range m.Nodes {
-			if node.Evacuating && node.coreCount > 0 {
-				return tryMoveCoreFrom(node, true)
-			}
-		}
-	}
-
-	// Step 3: balance collections next, respecting evacuation and node max size.
+	// Step 2: balance collections next, respecting node max size.
 	for _, bi := range balanceInfo {
 		if bi.score == 0 {
 			continue
@@ -287,9 +277,6 @@ func (m *Model) computeNextMove(mustEvacuate bool, immobileCores []bool) *Move {
 		})
 
 		for _, target := range targets {
-			if target.Evacuating {
-				continue
-			}
 			if bi.coresPerNode[target.id] >= bi.maxCoresPerNode {
 				// no good choices
 				break
@@ -308,7 +295,7 @@ func (m *Model) computeNextMove(mustEvacuate bool, immobileCores []bool) *Move {
 		}
 	}
 
-	// Step 4: balance nodes next, respecting evacuation and collection balance.
+	// Step 3: balance nodes next, respecting collection balance.
 	// Take the largest core from the largest node, and move it to the smallest node, provided we don't violate constraints.
 	if len(nodesBySize) > 1 {
 		biggest := nodesBySize[len(nodesBySize)-1]
@@ -327,16 +314,7 @@ func (m *Model) ComputeBestMoves(count int) []Move {
 	curModel := m
 	immobileCores := make([]bool, len(m.Cores)) // cores that have already moved
 	for i := 0; i < count; i++ {
-		// check to see if our next move must be an evacuation
-		mustEvacuate := false
-		for _, n := range curModel.Nodes {
-			if n.Evacuating && n.coreCount > 0 {
-				mustEvacuate = true
-				break
-			}
-		}
-
-		move := curModel.computeNextMove(mustEvacuate, immobileCores)
+		move := curModel.computeNextMove(immobileCores)
 		if move == nil {
 			// no good moves
 			break
