@@ -15,7 +15,6 @@
 package smmodel
 
 import (
-	"fmt"
 	"io/ioutil"
 	"strconv"
 	"strings"
