@@ -15,7 +15,7 @@
 package smmodel
 
 import (
-  "fmt"
+	"fmt"
 	"io/ioutil"
 	"strconv"
 	"strings"
@@ -79,7 +79,7 @@ func TestLargeModel(t *testing.T) {
 	// TODO(jh): review results
 	m := createTestModel(string(data))
 	moves := m.ComputeBestMoves(5)
-  fmt.Printf("%v", moves)
+	fmt.Printf("%v", moves)
 	assertEquals(t, []string{
 		`{"core":"collD_shard1_0_0_0_replica1","collection":"collD","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
 		`{"core":"collD_shard1_0_0_1_replica1","collection":"collD","shard":"shard1_0_0_1","from_node":"solr-1.node","to_node":"solr-9.node"}`,
@@ -126,8 +126,8 @@ func createTestModel(data string) *Model {
 			name := parts[0]
 			address := parts[1]
 			currentNode = &Node{
-				Name:       name,
-				Address:    address,
+				Name:    name,
+				Address: address,
 			}
 			if seenNodeNames[name] {
 				panic("already seen: " + name)

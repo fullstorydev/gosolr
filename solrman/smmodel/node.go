@@ -6,9 +6,9 @@ import "fmt"
 type nodeId int
 
 type Node struct {
-	Name       string `json:"name"`
-	Address    string `json:"address"`
-	Size       int64  `json:"size"` // in bytes
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	Size    int64  `json:"size"` // in bytes
 
 	id nodeId
 
