@@ -69,6 +69,25 @@ func TestCollectionBalanceModel(t *testing.T) {
 	}, moves)
 }
 
+func TestLargeModel(t *testing.T) {
+	t.Parallel()
+	data, err := ioutil.ReadFile("large_model.txt")
+	if err != nil {
+		t.Fatalf("failed to read large model: %s", err)
+	}
+
+	// TODO(jh): review results
+	m := createTestModel(string(data))
+	moves := m.ComputeBestMoves(5)
+	assertEquals(t, []string{
+		`{"core":"collD_shard1_0_0_0_replica1","collection":"collD","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
+		`{"core":"collD_shard1_0_0_1_replica1","collection":"collD","shard":"shard1_0_0_1","from_node":"solr-1.node","to_node":"solr-9.node"}`,
+		`{"core":"collD_shard1_0_1_0_replica1","collection":"collD","shard":"shard1_0_1_0","from_node":"solr-1.node","to_node":"solr-7.node"}`,
+		`{"core":"coll3F_shard1_0_0_0_replica1","collection":"coll3F","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
+		`{"core":"coll8A_shard1_0_1_0_replica1","collection":"coll8A","shard":"shard1_0_1_0","from_node":"solr-4.node","to_node":"solr-6.node"}`,
+	}, moves)
+}
+
 func assertEquals(t *testing.T, expected []string, actual []Move) {
 	t.Helper()
 	for i, c := 0, maxInt(len(expected), len(actual)); i < c; i++ {
