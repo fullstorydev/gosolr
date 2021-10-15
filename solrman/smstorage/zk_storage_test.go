@@ -116,42 +116,6 @@ func TestZkStorage_CompletedOps(t *testing.T) {
 	testStorage_CompletedOps(t, s)
 }
 
-func TestZkStorage_GetEvacuateNodeList(t *testing.T) {
-	s, testutil := setup(t)
-	defer testutil.teardown()
-
-	assertNodes := func(expectNodes ...string) {
-		nodes, err := s.GetEvacuateNodeList()
-		if err != nil {
-			t.Errorf("GetEvacuateNodeList failed: %s", err)
-			return
-		}
-		if len(expectNodes) != len(nodes) {
-			t.Errorf("expect len %d != actual len %d", len(expectNodes), len(nodes))
-			return
-		}
-		for i := range nodes {
-			if expectNodes[i] != nodes[i] {
-				t.Errorf("expect %s != actual %s", expectNodes[i], nodes[i])
-			}
-		}
-	}
-
-	assertNodes()
-
-	testutil.create(s.evacuatePath() + "/foo")
-	assertNodes("foo")
-
-	testutil.create(s.evacuatePath() + "/bar")
-	assertNodes("bar", "foo")
-
-	testutil.create(s.evacuatePath() + "/baz")
-	assertNodes("bar", "baz", "foo")
-
-	testutil.del(s.evacuatePath() + "/bar")
-	assertNodes("baz", "foo")
-}
-
 func TestZkStorage_IsDisabled(t *testing.T) {
 	s, testutil := setup(t)
 	defer testutil.teardown()

@@ -94,13 +94,6 @@ func (s *InMemoryStorage) GetCompletedOps(count int) ([]solrmanapi.OpRecord, err
 	return ret, nil
 }
 
-func (s *InMemoryStorage) GetEvacuateNodeList() ([]string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return nil, nil
-}
-
 func (s *InMemoryStorage) GetStationaryOrgList() ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

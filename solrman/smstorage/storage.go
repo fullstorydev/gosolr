@@ -41,9 +41,6 @@ type SolrManStorage interface {
 	// Returns the N most recent completed ops.
 	GetCompletedOps(count int) ([]solrmanapi.OpRecord, error)
 
-	// Returns a list of solr nodes that should be evacuated (e.g. move cores off these nodes onto other nodes)
-	GetEvacuateNodeList() ([]string, error)
-
 	// Returns a list of solr orgs that should not be split or moved.
 	GetStationaryOrgList() ([]string, error)
 
