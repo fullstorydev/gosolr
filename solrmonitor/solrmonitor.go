@@ -143,7 +143,7 @@ func (c *SolrMonitor) GetCollectionState(name string) (*CollectionState, error) 
 func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	coll:= c.collections[name]
+	coll := c.collections[name]
 
 	if coll == nil {
 		return nil, nil
@@ -178,7 +178,7 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) error {
-	c.logger.Printf("updateCollectionState: children %s", children )
+	c.logger.Printf("updateCollectionState: children %s", children)
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
@@ -249,7 +249,7 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 		// watch coll/state.json childrens for replica status
 		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
 			coll := c.getCollFromPath(path)
-			if coll != nil  {
+			if coll != nil {
 				return coll.isPRSEnabled()
 			}
 		}
@@ -392,7 +392,7 @@ type collection struct {
 	parent        *SolrMonitor // if nil, this collection object was removed from the ClusterState
 
 	collectionState *CollectionState
-	isWatched   bool
+	isWatched       bool
 }
 
 func parseStateData(name string, data []byte, version int32) (*CollectionState, error) {
@@ -471,7 +471,7 @@ func (coll *collection) startMonitoringReplicaStatus() {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
 
 	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
-	if  !coll.isWatched && coll.isPRSEnabled() {
+	if !coll.isWatched && coll.isPRSEnabled() {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
 			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
@@ -480,6 +480,6 @@ func (coll *collection) startMonitoringReplicaStatus() {
 	}
 }
 
-func (coll *collection)  isPRSEnabled() bool {
+func (coll *collection) isPRSEnabled() bool {
 	return coll.collectionState != nil && coll.collectionState.isPRSEnabled()
 }
