@@ -31,17 +31,17 @@ func TestFindClusterProblems(t *testing.T) {
 	zkState := fakeZk{}
 
 	for collName, coll := range data.ClusterState {
-		collState := &solrmonitor.CollectionState{Shards: map[string]solrmonitor.ShardState{}}
+		collState := &solrmonitor.CollectionState{Shards: map[string]*solrmonitor.ShardState{}}
 		clusterState[collName] = collState
 		for shardName, shard := range coll {
-			shardState := solrmonitor.ShardState{
+			shardState := &solrmonitor.ShardState{
 				State:    shard.State,
 				Range:    shard.HashRange,
-				Replicas: map[string]solrmonitor.ReplicaState{},
+				Replicas: map[string]*solrmonitor.ReplicaState{},
 			}
 			collState.Shards[shardName] = shardState
 			for replicaName, replica := range shard.Replicas {
-				replicaState := solrmonitor.ReplicaState{
+				replicaState := &solrmonitor.ReplicaState{
 					State:    replica.State,
 					Core:     replica.Core,
 					BaseUrl:  replica.BaseURL,
