@@ -76,7 +76,7 @@ func prsShouldExist(t *testing.T, sm *SolrMonitor, name string, shard string, re
 				continue
 			}
 
-			if val.PerReplicaState == "false" {
+			if !val.isPRSEnabled() {
 				t.Errorf("expected collection %s to be PRS", name)
 				continue
 			}

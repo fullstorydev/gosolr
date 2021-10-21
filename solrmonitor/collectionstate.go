@@ -35,6 +35,10 @@ func (cs *CollectionState) String() string {
 	return fmt.Sprintf("CollectionState\n{Shards:%+v, PerReplicaState:%s}\n", cs.Shards, cs.PerReplicaState)
 }
 
+func (cs *CollectionState) isPRSEnabled() bool {
+	return cs.PerReplicaState == "true"
+}
+
 type Router struct {
 	Name string `json:"name"` // e.g. "compositeId"
 }

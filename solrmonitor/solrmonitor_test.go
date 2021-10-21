@@ -231,7 +231,8 @@ func TestPRSProtocol(t *testing.T) {
 	prsShouldExist(t, sm, "c1", "shard_1_1", "R1_1", "active", "true", 1)
 }
 
-func TestBadStateJson(t *testing.T) {
+//that was meant for cachedState, which we removed
+func DisbaledTestBadStateJson(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
 
