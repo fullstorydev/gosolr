@@ -231,7 +231,7 @@ func TestPRSProtocol(t *testing.T) {
 	prsShouldExist(t, sm, "c1", "shard_1_1", "R1_1", "active", "true", 1)
 }
 
-//that was meant for cachedState, which we removed
+//that was meant for cachedState, which we removed as now we need to deserialize the stream as need to know PRS state of collection
 func DisbaledTestBadStateJson(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
