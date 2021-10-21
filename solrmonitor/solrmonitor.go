@@ -245,7 +245,10 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	default:
 		// watch coll/state.json childrens for replica status
 		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
-			return c.getCollFromPath(path) != nil
+			coll := c.getCollFromPath(path)
+			if coll != nil && coll.cachedState != nil {
+				return coll.cachedState.collectionState != nil && coll.cachedState.collectionState.PerReplicaState == "true"
+			}
 		}
 		return false
 	}
@@ -473,7 +476,7 @@ func (coll *collection) setData(data string, version int32) {
 }
 
 func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState) {
-	if oldState == nil || newState == nil || newState.PerReplicaState == "false" {
+	if oldState == nil || newState == nil || newState.PerReplicaState != "true" {
 		return
 	}
 	for shradName, newShardState := range newState.Shards {
