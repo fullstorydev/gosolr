@@ -4,9 +4,7 @@ func NewMockSolrMonitor(state ClusterState, liveNodes []string) *SolrMonitor {
 	collections := map[string]*collection{}
 	for k, v := range state {
 		collections[k] = &collection{
-			cachedState: &parsedCollectionState{
 				collectionState: v,
-			},
 		}
 	}
 	return &SolrMonitor{

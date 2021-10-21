@@ -141,12 +141,15 @@ func (c *SolrMonitor) GetCollectionState(name string) (*CollectionState, error) 
 }
 
 func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error) {
-	coll := c.collections[name]
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	coll:= c.collections[name]
+
 	if coll == nil {
 		return nil, nil
 	}
 
-	return coll.GetData()
+	return coll.collectionState, nil
 }
 
 func (c *SolrMonitor) GetLiveNodes() ([]string, error) {
@@ -220,7 +223,7 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 	coll.parent.mu.Lock()
 	defer coll.parent.mu.Unlock()
 	//update the collection state based on new PRS (per replica state)
-	for _, shard := range coll.cachedState.collectionState.Shards {
+	for _, shard := range coll.collectionState.Shards {
 		for rname, rstate := range shard.Replicas {
 			if prs, found := rmap[rname]; found {
 				//if version is more than current then take that state
@@ -246,8 +249,8 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 		// watch coll/state.json childrens for replica status
 		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
 			coll := c.getCollFromPath(path)
-			if coll != nil && coll.cachedState != nil {
-				return coll.cachedState.collectionState != nil && coll.cachedState.collectionState.PerReplicaState == "true"
+			if coll != nil  {
+				return coll.isPRSEnabled()
 			}
 		}
 		return false
@@ -264,22 +267,6 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 		coll.startMonitoringReplicaStatus()
 	}
 	return nil
-}
-
-func (coll *collection) startMonitoringReplicaStatus() {
-	coll.mu.Lock()
-	defer coll.mu.Unlock()
-
-	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-
-	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
-	if coll.cachedState.collectionState != nil && !coll.isWatched && coll.cachedState.collectionState.PerReplicaState == "true" {
-		err := coll.parent.zkWatcher.MonitorChildren(path)
-		if err == nil {
-			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
-			coll.isWatched = true
-		}
-	}
 }
 
 func (c *SolrMonitor) shouldWatchData(path string) bool {
@@ -404,38 +391,19 @@ type collection struct {
 	zkNodeVersion int32        // the version of the state.json data, or -1 if no state.json node exists
 	parent        *SolrMonitor // if nil, this collection object was removed from the ClusterState
 
-	cachedState *parsedCollectionState // cached of the current parsed stateData if non-nil
+	collectionState *CollectionState
 	isWatched   bool
 }
 
-type parsedCollectionState struct {
-	collectionState *CollectionState // if non-nil, the parsed stateData
-	err             error            // if non-nil, the error generated parsing stateData
-}
-
-func (pcs *parsedCollectionState) String() string {
-	return fmt.Sprintf("\nparsedCollectionState{collectionState:%+v}\n", pcs.collectionState)
-}
-
-// Returns the current collection state data.
-func (coll *collection) GetData() (*CollectionState, error) {
-	cachedState := func() *parsedCollectionState {
-		coll.mu.RLock()
-		defer coll.mu.RUnlock()
-		return coll.cachedState
-	}()
-	return cachedState.collectionState, cachedState.err
-}
-
-func parseStateData(name string, data []byte, version int32) *parsedCollectionState {
+func parseStateData(name string, data []byte, version int32) (*CollectionState, error) {
 	if len(data) == 0 {
-		return &parsedCollectionState{}
+		return nil, nil
 	}
 	// The individual per-collection state.json files are kind of weird; they are a single-element map from collection
 	// name to a CollectionState object.  In other words they are a ClusterState, containing only the relevant collection.
 	var state ClusterState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return &parsedCollectionState{err: err}
+		return nil, err
 	}
 
 	var keys []string
@@ -445,12 +413,12 @@ func parseStateData(name string, data []byte, version int32) *parsedCollectionSt
 
 	if len(keys) != 1 || keys[0] != name {
 		err := fmt.Errorf("Expected 1 key, got %s", keys)
-		return &parsedCollectionState{err: err}
+		return nil, err
 	}
 
 	collState := state[name]
 	collState.ZkNodeVersion = version
-	return &parsedCollectionState{collectionState: collState}
+	return collState, nil
 }
 
 func (coll *collection) start() error {
@@ -465,18 +433,20 @@ func (coll *collection) setData(data string, version int32) {
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
 	// we need to parse data here as we need to know PRS is enable for collection ot not; if enable then keep watch on coll/state.json children
-	newState := parseStateData(coll.name, []byte(data), coll.zkNodeVersion)
-	var oldState *CollectionState = nil
-	if coll.cachedState != nil {
-		oldState = coll.cachedState.collectionState
+	newState, err := parseStateData(coll.name, []byte(data), coll.zkNodeVersion)
+	if err != nil {
+		coll.parent.logger.Printf("Unable to parse collection[%s] data. Error %s", coll.name, err)
 	}
-	coll.updateReplicaVersionAndState(newState.collectionState, oldState)
+
+	var oldState *CollectionState = coll.collectionState
+
+	coll.updateReplicaVersionAndState(newState, oldState)
 	coll.zkNodeVersion = version
-	coll.cachedState = newState
+	coll.collectionState = newState
 }
 
 func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState) {
-	if oldState == nil || newState == nil || newState.PerReplicaState != "true" {
+	if oldState == nil || newState == nil || newState.isPRSEnabled() {
 		return
 	}
 	for shradName, newShardState := range newState.Shards {
@@ -492,4 +462,24 @@ func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, 
 			}
 		}
 	}
+}
+
+func (coll *collection) startMonitoringReplicaStatus() {
+	coll.mu.Lock()
+	defer coll.mu.Unlock()
+
+	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
+
+	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
+	if  !coll.isWatched && coll.isPRSEnabled() {
+		err := coll.parent.zkWatcher.MonitorChildren(path)
+		if err == nil {
+			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
+			coll.isWatched = true
+		}
+	}
+}
+
+func (coll *collection)  isPRSEnabled() bool {
+	return coll.collectionState != nil && coll.collectionState.isPRSEnabled()
 }
