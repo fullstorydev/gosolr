@@ -188,26 +188,39 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 	rmap := map[string]*PerReplicaState{}
 
 	for _, r := range children {
-		d := strings.Split(r, ":")
-		version, _ := strconv.ParseInt(d[1], 10, 32)
+		replicaParts := strings.Split(r, ":")
+		if len(replicaParts) < 3 || len(replicaParts) > 4 {
+			c.logger.Printf("PRS protocol is wrong %s ", r)
+			panic(fmt.Sprintf("PRS protocol is in wrong format %s ", r))
+		}
+		version, err := strconv.ParseInt(replicaParts[1], 10, 32)
+		if err != nil {
+			c.logger.Printf("PRS protocol has wrong version %s ", r)
+			panic(fmt.Sprintf("PRS protocol has wrong version %s ", r))
+		}
 
 		prs := &PerReplicaState{
-			Name:    d[0],
+			Name:    replicaParts[0],
 			Version: int32(version),
 		}
 
-		if d[2] == "A" {
-			prs.State = "active"
-		} else if d[2] == "D" {
-			prs.State = "down"
-		} else if d[2] == "R" {
-			prs.State = "recovering"
-		} else {
-			prs.State = "inactive"
+		switch replicaParts[2] {
+			case "A":
+				prs.State = "active"
+			case "D":
+				prs.State = "down"
+			case "R":
+				prs.State = "recovering"
+			case "F":
+				prs.State = "RECOVERY_FAILED"
+			default:
+				// marking inactive - as it should be recoverable error
+				c.logger.Printf("ERROR: PRS protocol UNKNOWN state %s ", replicaParts[2])
+				prs.State = "inactive"
 		}
 
 		prs.Leader = "false"
-		if len(d) == 4 {
+		if len(replicaParts) == 4 {
 			prs.Leader = "true"
 		}
 
@@ -438,7 +451,7 @@ func (coll *collection) setData(data string, version int32) {
 		coll.parent.logger.Printf("Unable to parse collection[%s] data. Error %s", coll.name, err)
 	}
 
-	var oldState *CollectionState = coll.collectionState
+	var oldState = coll.collectionState
 
 	coll.updateReplicaVersionAndState(newState, oldState)
 	coll.zkNodeVersion = version
