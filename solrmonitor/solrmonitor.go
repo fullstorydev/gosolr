@@ -175,8 +175,20 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 		if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
 			return fmt.Errorf("solrmonitor: unknown childrenChanged: %s", path)
 		}
-		return c.updateCollectionState(path, children)
+		return c.updateCollection(path, children)
 	}
+}
+func (c *SolrMonitor) updateCollection(path string, children []string) error {
+	err := c.updateCollectionState(path, children)
+
+	if err != nil {
+		coll := c.getCollFromPath(path)
+		if coll != nil {
+			c.callSolrListener(coll)
+		}
+	}
+
+	return err
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) error {
@@ -280,13 +292,17 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	if coll != nil {
 		coll.setData(data, version)
 		coll.startMonitoringReplicaStatus()
-		if c.solrEventListener != nil {
-			c.mu.RUnlock()
-			defer c.mu.RUnlock()
-			c.solrEventListener.SolrCollectionChanged(coll.name, coll.collectionState)
-		}
+		c.callSolrListener(coll)
 	}
 	return nil
+}
+
+func (c *SolrMonitor) callSolrListener(coll *collection) {
+	if c.solrEventListener != nil {
+		c.mu.RLock()
+		defer c.mu.RUnlock()
+		c.solrEventListener.SolrCollectionChanged(coll.name, coll.collectionState)
+	}
 }
 
 func (c *SolrMonitor) shouldWatchData(path string) bool {
