@@ -80,7 +80,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		t.Fatal(err)
 	}
 
-	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root)
+	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root, nil)
 	if err != nil {
 		conn.Close()
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestCollectionChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sm2, err := NewSolrMonitorWithRoot(conn2, w2, testutil.logger, testutil.root)
+	sm2, err := NewSolrMonitorWithRoot(conn2, w2, testutil.logger, testutil.root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -79,7 +79,7 @@ func run(logger *log.Logger) error {
 		zkCli = flakyZk
 	}
 
-	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zkCli, zkWatcher, &solrmonitorLogger{logger: logger}, solrZkPath)
+	solrMonitor, err := solrmonitor.NewSolrMonitorWithRoot(zkCli, zkWatcher, &solrmonitorLogger{logger: logger}, solrZkPath, nil)
 	if err != nil {
 		return smutil.Cherrf(err, "Failed to create solrMonitor")
 	}

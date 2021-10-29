@@ -33,9 +33,10 @@ type SolrMonitor struct {
 	solrRoot  string    // e.g. "/solr"
 	zkWatcher *ZkWatcherMan
 
-	mu          sync.RWMutex
-	collections map[string]*collection // map of all currently-known collections
-	liveNodes   []string               // current set of live_nodes
+	mu                sync.RWMutex
+	collections       map[string]*collection // map of all currently-known collections
+	liveNodes         []string               // current set of live_nodes
+	solrEventListener SolrEventListener      // to listen the solr cluster state
 }
 
 // Minimal interface solrmonitor needs (allows for mock ZK implementations).
@@ -52,26 +53,27 @@ type ZkCli interface {
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
 func NewSolrMonitor(zkCli ZkCli, zkWatcher *ZkWatcherMan) (*SolrMonitor, error) {
-	return NewSolrMonitorWithLogger(zkCli, zkWatcher, zk.DefaultLogger)
+	return NewSolrMonitorWithLogger(zkCli, zkWatcher, zk.DefaultLogger, nil)
 }
 
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
-func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger) (*SolrMonitor, error) {
-	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr")
+func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrEventListener SolrEventListener) (*SolrMonitor, error) {
+	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr", solrEventListener)
 }
 
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
-func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrRoot string) (*SolrMonitor, error) {
+func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrRoot string, solrEventListener SolrEventListener) (*SolrMonitor, error) {
 	c := &SolrMonitor{
-		logger:      logger,
-		zkCli:       zkCli,
-		solrRoot:    solrRoot,
-		zkWatcher:   zkWatcher,
-		collections: make(map[string]*collection),
+		logger:            logger,
+		zkCli:             zkCli,
+		solrRoot:          solrRoot,
+		zkWatcher:         zkWatcher,
+		collections:       make(map[string]*collection),
+		solrEventListener: solrEventListener,
 	}
 	err := c.start()
 	if err != nil {
@@ -205,18 +207,18 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 		}
 
 		switch replicaParts[2] {
-			case "A":
-				prs.State = "active"
-			case "D":
-				prs.State = "down"
-			case "R":
-				prs.State = "recovering"
-			case "F":
-				prs.State = "RECOVERY_FAILED"
-			default:
-				// marking inactive - as it should be recoverable error
-				c.logger.Printf("ERROR: PRS protocol UNKNOWN state %s ", replicaParts[2])
-				prs.State = "inactive"
+		case "A":
+			prs.State = "active"
+		case "D":
+			prs.State = "down"
+		case "R":
+			prs.State = "recovering"
+		case "F":
+			prs.State = "RECOVERY_FAILED"
+		default:
+			// marking inactive - as it should be recoverable error
+			c.logger.Printf("ERROR: PRS protocol UNKNOWN state %s ", replicaParts[2])
+			prs.State = "inactive"
 		}
 
 		prs.Leader = "false"
@@ -278,6 +280,11 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	if coll != nil {
 		coll.setData(data, version)
 		coll.startMonitoringReplicaStatus()
+		if c.solrEventListener != nil {
+			c.mu.RUnlock()
+			defer c.mu.RUnlock()
+			c.solrEventListener.SolrCollectionChanged(coll.name, coll.collectionState)
+		}
 	}
 	return nil
 }
@@ -290,9 +297,14 @@ func (c *SolrMonitor) shouldWatchData(path string) bool {
 func (c *SolrMonitor) getCollFromPath(path string) *collection {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	name := c.getCollNameFromPath(path)
+	return c.collections[name]
+}
+
+func (c *SolrMonitor) getCollNameFromPath(path string) string {
 	name := strings.TrimPrefix(path, c.solrRoot+"/collections/")
 	name = strings.TrimSuffix(name, "/state.json")
-	return c.collections[name]
+	return name
 }
 
 func (c *SolrMonitor) start() error {
@@ -386,6 +398,16 @@ func (c *SolrMonitor) updateCollections(collections []string) error {
 	if int(errCount) > logNewSize/10 {
 		return fmt.Errorf("%d/%d orgs failed to start", errCount, logNewSize)
 	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.solrEventListener != nil {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.solrEventListener.SolrCollectionsChanged(collections)
+	}
+
 	return nil
 }
 
@@ -394,6 +416,9 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.liveNodes = liveNodes
+	if c.solrEventListener != nil {
+		c.solrEventListener.SolrLiveNodesChanged(liveNodes)
+	}
 	return nil
 }
 
