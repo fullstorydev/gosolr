@@ -205,22 +205,28 @@ func (s *ZkStorage) GetStationaryOrgList() ([]string, error) {
 	return children, nil
 }
 
-func (s *ZkStorage) IsDisabled() bool {
+func (s *ZkStorage) IsDisabled() (bool, string) {
 	path := s.disabledPath()
-	exists, _, err := s.conn.Exists(path)
+	data, _, err := s.conn.Get(path)
 	if err != nil {
+    // If no node, it is not disabled.
+    if err == ErrNoNode {
+      return false, ""
+    }
+
+    // For any other error, log and assume that bad-data means disabled.
 		if s.logger != nil {
 			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
 		}
-		return true // assume disabled if we have an error
+		return true, ""
 	}
-	return exists
+	return true, string(data)
 }
 
-func (s *ZkStorage) SetDisabled(disabled bool) error {
+func (s *ZkStorage) SetDisabled(disabled bool, reason string) error {
 	path := s.disabledPath()
 	if disabled {
-		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
+		_, err := s.conn.Create(path, []byte(reason), 0, zk.WorldACL(zk.PermAll))
 		if err != nil && err != zk.ErrNodeExists {
 			return smutil.Cherrf(err, "could not create %s in ZK", path)
 		}
