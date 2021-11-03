@@ -149,15 +149,15 @@ func TestZkStorage_SetDisabled(t *testing.T) {
 	s, testutil := setup(t)
 	defer testutil.teardown()
 
-	if s.IsDisabled() {
-		t.Error("expected to not be disabled")
+	if isDisabled, reason := s.IsDisabled(); isDisabled {
+		t.Error("expected to not be disabled; reason found was %s", reason)
 	}
 	if ok, _, _ := s.conn.Exists(s.disabledPath()); ok {
 		t.Errorf("%s should not exist", s.disabledPath())
 	}
 
-	s.SetDisabled(true)
-	if !s.IsDisabled() {
+	s.SetDisabled(true, "testSetDisabled")
+	if isDisabled, reason := s.IsDisabled(); !isDisabled {
 		t.Error("expected to be disabled")
 	}
 	if ok, _, _ := s.conn.Exists(s.disabledPath()); !ok {
@@ -165,7 +165,7 @@ func TestZkStorage_SetDisabled(t *testing.T) {
 	}
 
 	s.SetDisabled(false)
-	if s.IsDisabled() {
+	if isDisabled, reason := s.IsDisabled(); isDisabled {
 		t.Error("expected to not be disabled")
 	}
 	if ok, _, _ := s.conn.Exists(s.disabledPath()); ok {
