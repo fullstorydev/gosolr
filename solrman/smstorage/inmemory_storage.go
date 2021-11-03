@@ -26,6 +26,7 @@ import (
 type InMemoryStorage struct {
 	mu                             sync.RWMutex
 	disabled                       bool
+	disabledReason                 string
 	splitsDisabled                 bool
 	tripsDisabled                  bool
 	movesDisabled                  bool
@@ -101,18 +102,19 @@ func (s *InMemoryStorage) GetStationaryOrgList() ([]string, error) {
 	return nil, nil
 }
 
-func (s *InMemoryStorage) IsDisabled() bool {
+func (s *InMemoryStorage) IsDisabled() (bool, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.disabled
+	return s.disabled, s.disabledReason
 }
 
-func (s *InMemoryStorage) SetDisabled(disabled bool) error {
+func (s *InMemoryStorage) SetDisabled(disabled bool, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.disabled = disabled
+	s.disabledReason = reason
 	return nil
 }
 

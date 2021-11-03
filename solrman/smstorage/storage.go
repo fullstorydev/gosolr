@@ -44,9 +44,9 @@ type SolrManStorage interface {
 	// Returns a list of solr orgs that should not be split or moved.
 	GetStationaryOrgList() ([]string, error)
 
-	IsDisabled() bool           // if true, solrman is entirely disabled
-	SetDisabled(bool) error     // disable solrman due to unrecoverable error completing an op
-	GetDisabledTime() time.Time // ms since the disabled node was created
+	IsDisabled() (bool, string)     // if true, solrman is entirely disabled
+	SetDisabled(bool, string) error // disable solrman due to unrecoverable error completing an op
+	GetDisabledTime() time.Time     // ms since the disabled node was created
 
 	IsSplitsDisabled() bool       // if true, don't do splits
 	SetSplitsDisabled(bool) error // disable splits

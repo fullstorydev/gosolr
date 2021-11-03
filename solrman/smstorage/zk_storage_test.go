@@ -52,6 +52,17 @@ func (tu *testutil) create(path string) {
 	}
 }
 
+func (tu *testutil) createWithData(path string, data string) {
+	if !strings.HasPrefix(path, tu.s.root) {
+		panic(fmt.Sprintf("cannot create node at %s, must be under %s", path, tu.s.root))
+	}
+
+	if _, err := tu.s.conn.Create(path, []byte(data), 0, zk.WorldACL(zk.PermAll)); err != nil {
+		tu.t.Fatal(err)
+	}
+
+}
+
 func (tu *testutil) del(path string) {
 	if !strings.HasPrefix(path, tu.s.root) {
 		panic(fmt.Sprintf("cannot delete node at %s, must be under %s", path, tu.s.root))
@@ -120,14 +131,16 @@ func TestZkStorage_IsDisabled(t *testing.T) {
 	s, testutil := setup(t)
 	defer testutil.teardown()
 
-	if s.IsDisabled() {
+	if isDisabled, reason := s.IsDisabled(); isDisabled {
 		t.Error("expected to not be disabled")
 	}
 
-	testutil.create(s.disabledPath())
+	testutil.createWithData(s.disabledPath(), "testDisabled")
 
-	if !s.IsDisabled() {
+	if isDisabled, reason := s.IsDisabled(); !IsDisabled {
 		t.Error("expected to be disabled")
+	} else if reason != "testDisabled" {
+		t.Errorf("expect reason is \"testDisabled\"; got %s", reason)
 	}
 
 }
@@ -136,15 +149,15 @@ func TestZkStorage_SetDisabled(t *testing.T) {
 	s, testutil := setup(t)
 	defer testutil.teardown()
 
-	if s.IsDisabled() {
-		t.Error("expected to not be disabled")
+	if isDisabled, reason := s.IsDisabled(); isDisabled {
+		t.Error("expected to not be disabled; reason found was %s", reason)
 	}
 	if ok, _, _ := s.conn.Exists(s.disabledPath()); ok {
 		t.Errorf("%s should not exist", s.disabledPath())
 	}
 
-	s.SetDisabled(true)
-	if !s.IsDisabled() {
+	s.SetDisabled(true, "testSetDisabled")
+	if isDisabled, reason := s.IsDisabled(); !isDisabled {
 		t.Error("expected to be disabled")
 	}
 	if ok, _, _ := s.conn.Exists(s.disabledPath()); !ok {
@@ -152,7 +165,7 @@ func TestZkStorage_SetDisabled(t *testing.T) {
 	}
 
 	s.SetDisabled(false)
-	if s.IsDisabled() {
+	if isDisabled, reason := s.IsDisabled(); isDisabled {
 		t.Error("expected to not be disabled")
 	}
 	if ok, _, _ := s.conn.Exists(s.disabledPath()); ok {
