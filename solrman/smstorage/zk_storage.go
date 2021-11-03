@@ -209,12 +209,12 @@ func (s *ZkStorage) IsDisabled() (bool, string) {
 	path := s.disabledPath()
 	data, _, err := s.conn.Get(path)
 	if err != nil {
-    // If no node, it is not disabled.
-    if err == zk.ErrNoNode {
-      return false, ""
-    }
+		// If no node, it is not disabled.
+		if err == zk.ErrNoNode {
+			return false, ""
+		}
 
-    // For any other error, log and assume that bad-data means disabled.
+		// For any other error, log and assume that bad-data means disabled.
 		if s.logger != nil {
 			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
 		}

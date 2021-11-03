@@ -140,8 +140,8 @@ func TestZkStorage_IsDisabled(t *testing.T) {
 	if isDisabled, reason := s.IsDisabled(); !IsDisabled {
 		t.Error("expected to be disabled")
 	} else if reason != "testDisabled" {
-    t.Errorf("expect reason is \"testDisabled\"; got %s", reason)
-  }
+		t.Errorf("expect reason is \"testDisabled\"; got %s", reason)
+	}
 
 }
 

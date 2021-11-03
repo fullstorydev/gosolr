@@ -26,7 +26,7 @@ import (
 type InMemoryStorage struct {
 	mu                             sync.RWMutex
 	disabled                       bool
-  disabledReason                 string
+	disabledReason                 string
 	splitsDisabled                 bool
 	tripsDisabled                  bool
 	movesDisabled                  bool
@@ -114,7 +114,7 @@ func (s *InMemoryStorage) SetDisabled(disabled bool, reason string) error {
 	defer s.mu.Unlock()
 
 	s.disabled = disabled
-  s.disabledReason = reason
+	s.disabledReason = reason
 	return nil
 }
 
