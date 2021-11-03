@@ -210,7 +210,7 @@ func (s *ZkStorage) IsDisabled() (bool, string) {
 	data, _, err := s.conn.Get(path)
 	if err != nil {
     // If no node, it is not disabled.
-    if err == ErrNoNode {
+    if err == zk.ErrNoNode {
       return false, ""
     }
 
