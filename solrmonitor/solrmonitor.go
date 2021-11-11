@@ -26,6 +26,12 @@ import (
 	"github.com/fullstorydev/zk"
 )
 
+const (
+	collectionsPath        = "/collections"
+	liveNodesPath          = "/live_nodes"
+	liveQueryNodesPath     = "/live_query_nodes"
+)
+
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
 type SolrMonitor struct {
 	logger    zk.Logger // where to debug log
@@ -36,6 +42,7 @@ type SolrMonitor struct {
 	mu                sync.RWMutex
 	collections       map[string]*collection // map of all currently-known collections
 	liveNodes         []string               // current set of live_nodes
+	queryNodes        []string               // current set of live_query_nodes
 	solrEventListener SolrEventListener      // to listen the solr cluster state
 }
 
@@ -166,10 +173,12 @@ func (c *SolrMonitor) GetLiveNodes() ([]string, error) {
 
 func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	switch path {
-	case c.solrRoot + "/collections":
+	case c.solrRoot + collectionsPath:
 		return c.updateCollections(children)
-	case c.solrRoot + "/live_nodes":
+	case c.solrRoot + liveNodesPath:
 		return c.updateLiveNodes(children)
+	case c.solrRoot + liveQueryNodesPath:
+		return c.updateLiveQueryNodes(children)
 	default:
 		//collectionsPath + "/" + coll.name + "/state.json": we want to state.json children
 		if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
@@ -268,9 +277,11 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 
 func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	switch path {
-	case c.solrRoot + "/collections":
+	case c.solrRoot + collectionsPath:
 		return true
-	case c.solrRoot + "/live_nodes":
+	case c.solrRoot + liveQueryNodesPath:
+		return true
+	case c.solrRoot + liveQueryNodesPath:
 		return true
 	default:
 		// watch coll/state.json childrens for replica status
@@ -338,13 +349,17 @@ func (c *SolrMonitor) start() error {
 		c.logger.Printf("please use Solr's MIGRATESTATEFORMAT collections command: %s", err)
 	}
 
-	collectionsPath := c.solrRoot + "/collections"
-	liveNodesPath := c.solrRoot + "/live_nodes"
+	collectionsPath := c.solrRoot + collectionsPath
+	liveNodesPath := c.solrRoot + liveNodesPath
+	queryNodesPath := c.solrRoot + liveQueryNodesPath
 	c.zkWatcher.Start(c.zkCli, callbacks{c})
 	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
 		return err
 	}
 	if err := c.zkWatcher.MonitorChildren(liveNodesPath); err != nil {
+		return err
+	}
+	if err := c.zkWatcher.MonitorChildren(queryNodesPath); err != nil {
 		return err
 	}
 	return nil
@@ -428,12 +443,23 @@ func (c *SolrMonitor) updateCollections(collections []string) error {
 }
 
 func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
-	c.logger.Printf("live_nodes (%d): %s", len(liveNodes), liveNodes)
+	c.logger.Printf("%s (%d): %s", liveNodesPath, len(liveNodes), liveNodes)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.liveNodes = liveNodes
 	if c.solrEventListener != nil {
 		c.solrEventListener.SolrLiveNodesChanged(liveNodes)
+	}
+	return nil
+}
+
+func (c *SolrMonitor) updateLiveQueryNodes(queryNodes []string) error {
+	c.logger.Printf("%s (%d): %s", liveQueryNodesPath, len(queryNodes), queryNodes)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.queryNodes = queryNodes
+	if c.solrEventListener != nil {
+		c.solrEventListener.SolrQueryNodesChanged(c.queryNodes)
 	}
 	return nil
 }
