@@ -161,6 +161,16 @@ func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error
 	return coll.collectionState, nil
 }
 
+func (c *SolrMonitor) GetQueryNodes() ([]string, error) {
+	if c.zkCli.State() != zk.StateHasSession {
+		return nil, errors.New("not currently connected to zk")
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]string{}, c.queryNodes...), nil
+}
+
 func (c *SolrMonitor) GetLiveNodes() ([]string, error) {
 	if c.zkCli.State() != zk.StateHasSession {
 		return nil, errors.New("not currently connected to zk")
