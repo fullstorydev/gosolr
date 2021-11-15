@@ -33,6 +33,7 @@ type testutil struct {
 	root   string
 	sm     *SolrMonitor
 	logger *smtestutil.ZkTestLogger
+	solrEventListener	*SEListener
 }
 
 func (tu *testutil) teardown() {
@@ -80,7 +81,13 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		t.Fatal(err)
 	}
 
-	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root, nil)
+	l := &SEListener{
+		liveNodes:        0,
+		queryNodes:       0,
+		collections:      0,
+		collectionStates: make(map[string]*CollectionState),
+	}
+	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root, l)
 	if err != nil {
 		conn.Close()
 		t.Fatal(err)
@@ -91,6 +98,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		root:   root,
 		sm:     sm,
 		logger: logger,
+		solrEventListener: l,
 	}
 }
 
@@ -109,7 +117,20 @@ func TestCollectionChanges(t *testing.T) {
 
 	zkCli := testutil.conn
 	zkCli.Create(sm.solrRoot+"/collections", nil, 0, zk.WorldACL(zk.PermAll))
-	_, err := zkCli.Create(sm.solrRoot+"/collections/c1", nil, 0, zk.WorldACL(zk.PermAll))
+	zkCli.Create(sm.solrRoot+"/live_nodes", nil, 0, zk.WorldACL(zk.PermAll))
+	zkCli.Create(sm.solrRoot+"/live_query_nodes", nil, 0, zk.WorldACL(zk.PermAll))
+
+	_, err := zkCli.Create(sm.solrRoot+"/live_nodes/localhost:8983", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = zkCli.Create(sm.solrRoot+"/live_query_nodes/localhost:8984", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,6 +156,14 @@ func TestCollectionChanges(t *testing.T) {
 
 	if rep.Leader != "false" {
 		t.Fatalf("replica is not leader %+v", rep)
+	}
+
+	if len(testutil.solrEventListener.collectionStates) != 1 || testutil.solrEventListener.collections != 1 {
+		t.Fatalf("Event listener didn't  not get event for collection  = %d, collectionstate = %d", testutil.solrEventListener.collections, len (testutil.solrEventListener.collectionStates))
+	}
+
+	if testutil.solrEventListener.liveNodes != 1 || testutil.solrEventListener.queryNodes != 1 {
+		t.Fatalf("Event listener didn't  not get event for livenodes  = %d, querynodes = %d", testutil.solrEventListener.liveNodes, testutil.solrEventListener.queryNodes)
 	}
 
 	// Get a fresh new solr monitor and make sure it starts in the right state.
@@ -255,4 +284,27 @@ func DisbaledTestBadStateJson(t *testing.T) {
 	shouldError(t, sm, "c1")
 	shouldBecomeEq(t, 1, testutil.logger.GetErrorCount)
 	testutil.logger.Clear()
+}
+
+type SEListener struct {
+	liveNodes int
+	queryNodes int
+	collections int
+	collectionStates map[string]*CollectionState
+}
+
+func (l *SEListener) SolrLiveNodesChanged(livenodes []string) {
+	l.liveNodes = len(livenodes)
+}
+
+func (l *SEListener) SolrQueryNodesChanged(querynodes []string) {
+	l.queryNodes = len(querynodes)
+}
+
+func (l *SEListener)SolrCollectionsChanged(collections []string) {
+	l.collections = len(collections)
+}
+
+func (l *SEListener)SolrCollectionChanged(name string, collectionState *CollectionState) {
+	l.collectionStates[name] = collectionState
 }

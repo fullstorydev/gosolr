@@ -289,7 +289,7 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	switch path {
 	case c.solrRoot + collectionsPath:
 		return true
-	case c.solrRoot + liveQueryNodesPath:
+	case c.solrRoot + liveNodesPath:
 		return true
 	case c.solrRoot + liveQueryNodesPath:
 		return true
@@ -444,8 +444,6 @@ func (c *SolrMonitor) updateCollections(collections []string) error {
 	defer c.mu.Unlock()
 
 	if c.solrEventListener != nil {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		c.solrEventListener.SolrCollectionsChanged(collections)
 	}
 
