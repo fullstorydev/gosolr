@@ -320,9 +320,11 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 
 func (c *SolrMonitor) callSolrListener(coll *collection) {
 	if c.solrEventListener != nil {
+		c.logger.Printf("SolrCollectionChanged started %s ", coll.name)
 		c.mu.RLock()
 		defer c.mu.RUnlock()
 		c.solrEventListener.SolrCollectionChanged(coll.name, coll.collectionState)
+		c.logger.Printf("SolrCollectionChanged ended %s ", coll.name)
 	}
 }
 
@@ -379,6 +381,8 @@ func (c *SolrMonitor) start() error {
 func (c *SolrMonitor) updateCollections(collections []string) error {
 	var logAdded, logRemoved []string
 	logOldSize, logNewSize := len(c.collections), len(collections)
+
+	c.collectionsChanged(collections)
 
 	var added []*collection
 	func() {
@@ -440,14 +444,18 @@ func (c *SolrMonitor) updateCollections(collections []string) error {
 		return fmt.Errorf("%d/%d orgs failed to start", errCount, logNewSize)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	return nil
+}
+
+func (c *SolrMonitor) collectionsChanged(collections []string) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if c.solrEventListener != nil {
+		c.logger.Printf("SolrCollectionsChanged started %s", collections)
 		c.solrEventListener.SolrCollectionsChanged(collections)
+		c.logger.Printf("SolrCollectionsChanged ended ")
 	}
-
-	return nil
 }
 
 func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
@@ -456,7 +464,9 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
 	defer c.mu.Unlock()
 	c.liveNodes = liveNodes
 	if c.solrEventListener != nil {
+		c.logger.Printf("SolrLiveNodesChanged started %s", liveNodes)
 		c.solrEventListener.SolrLiveNodesChanged(liveNodes)
+		c.logger.Printf("SolrLiveNodesChanged ended %s", liveNodes)
 	}
 	return nil
 }
@@ -467,7 +477,9 @@ func (c *SolrMonitor) updateLiveQueryNodes(queryNodes []string) error {
 	defer c.mu.Unlock()
 	c.queryNodes = queryNodes
 	if c.solrEventListener != nil {
+		c.logger.Printf("SolrQueryNodesChanged started %s", queryNodes)
 		c.solrEventListener.SolrQueryNodesChanged(c.queryNodes)
+		c.logger.Printf("SolrQueryNodesChanged started %s", queryNodes)
 	}
 	return nil
 }
