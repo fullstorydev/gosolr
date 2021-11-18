@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	collectionsPath        = "/collections"
-	liveNodesPath          = "/live_nodes"
-	liveQueryNodesPath     = "/live_query_nodes"
+	collectionsPath    = "/collections"
+	liveNodesPath      = "/live_nodes"
+	liveQueryNodesPath = "/live_query_nodes"
 )
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
@@ -320,11 +320,9 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 
 func (c *SolrMonitor) callSolrListener(coll *collection) {
 	if c.solrEventListener != nil {
-		c.logger.Printf("SolrCollectionChanged started %s ", coll.name)
 		c.mu.RLock()
 		defer c.mu.RUnlock()
 		c.solrEventListener.SolrCollectionChanged(coll.name, coll.collectionState)
-		c.logger.Printf("SolrCollectionChanged ended %s ", coll.name)
 	}
 }
 
@@ -452,9 +450,7 @@ func (c *SolrMonitor) collectionsChanged(collections []string) {
 	defer c.mu.RUnlock()
 
 	if c.solrEventListener != nil {
-		c.logger.Printf("SolrCollectionsChanged started %s", collections)
 		c.solrEventListener.SolrCollectionsChanged(collections)
-		c.logger.Printf("SolrCollectionsChanged ended ")
 	}
 }
 
