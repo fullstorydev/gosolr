@@ -200,7 +200,7 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 func (c *SolrMonitor) updateCollection(path string, children []string) error {
 	err := c.updateCollectionState(path, children)
 
-	if err != nil {
+	if err == nil {
 		coll := c.getCollFromPath(path)
 		if coll != nil {
 			c.callSolrListener(coll)

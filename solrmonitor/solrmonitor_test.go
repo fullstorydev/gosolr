@@ -17,6 +17,7 @@
 package solrmonitor
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -85,6 +86,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		liveNodes:        0,
 		queryNodes:       0,
 		collections:      0,
+		collStateEvents: 0,
 		collectionStates: make(map[string]*CollectionState),
 	}
 	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root, l)
@@ -109,7 +111,7 @@ func disabledTestManual(t *testing.T) {
 	time.Sleep(10 * time.Minute)
 }
 
-func TestCollectionChanges(t *testing.T) {
+func DTestCollectionChanges(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
 
@@ -196,6 +198,7 @@ func TestPRSProtocol(t *testing.T) {
 	}
 
 	shouldNotExist(t, sm, "c1")
+	checkCollectionStateCallback(1, testutil.solrEventListener.collStateEvents)
 
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
@@ -203,6 +206,7 @@ func TestPRSProtocol(t *testing.T) {
 	}
 
 	shouldNotExist(t, sm, "c1")
+	checkCollectionStateCallback(2, testutil.solrEventListener.collStateEvents)
 
 	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"true\",	 \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\"}}}}}}"), -1)
 	if err != nil {
@@ -210,6 +214,7 @@ func TestPRSProtocol(t *testing.T) {
 	}
 
 	shouldExist(t, sm, "c1")
+	checkCollectionStateCallback(4, testutil.solrEventListener.collStateEvents)
 
 	// 1. adding PRS for replica R1, version 1, state down
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:1:D", nil, 0, zk.WorldACL(zk.PermAll))
@@ -217,13 +222,14 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "down", "false", 1)
-
+	checkCollectionStateCallback(5, testutil.solrEventListener.collStateEvents)
 	// 2. adding PRS for replica R1, version 1 -same, state active => should ignore as same version
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:1:R", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "down", "false", 1)
+	checkCollectionStateCallback(6, testutil.solrEventListener.collStateEvents)
 
 	// 3. adding PRS for replica R1, version 2, state active
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:2:A", nil, 0, zk.WorldACL(zk.PermAll))
@@ -231,6 +237,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "false", 2)
+	checkCollectionStateCallback(7, testutil.solrEventListener.collStateEvents)
 
 	// 4. adding PRS for replica R1, version 3, state active and leader
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:3:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -238,12 +245,15 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "true", 3)
+	checkCollectionStateCallback(8, testutil.solrEventListener.collStateEvents)
 
 	//5. split shard
 	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"true\",	 \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\"}}}, \"shard_1_0\":{\"replicas\":{\"R1_0\":{\"core\":\"core1\"}}}, \"shard_1_1\":{\"replicas\":{\"R1_1\":{\"core\":\"core1\"}}}}}}"), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(5000 * time.Millisecond)
+	checkCollectionStateCallback(9, testutil.solrEventListener.collStateEvents)
 
 	// 6. replica R1_0 should exist
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1_0:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -251,6 +261,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1_0", "R1_0", "active", "true", 1)
+	checkCollectionStateCallback(10, testutil.solrEventListener.collStateEvents)
 
 	// 7. replica R1_1 should exist
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1_1:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -258,10 +269,22 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1_1", "R1_1", "active", "true", 1)
+	checkCollectionStateCallback(11, testutil.solrEventListener.collStateEvents)
+
+	if testutil.solrEventListener.collStateEvents != 11 || testutil.solrEventListener.collections != 1 {
+		t.Fatalf("Event listener didn't  not get event for collection  = %d, collectionstateEvents = %d", testutil.solrEventListener.collections, testutil.solrEventListener.collStateEvents)
+	}
+}
+
+func checkCollectionStateCallback(expected int, found int)  {
+	if expected != found {
+		msg := fmt.Sprintf("listener event is %d, expected %d ", found, expected)
+		panic(msg)
+	}
 }
 
 //that was meant for cachedState, which we removed as now we need to deserialize the stream as need to know PRS state of collection
-func DisbaledTestBadStateJson(t *testing.T) {
+func DisabledTestBadStateJson(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
 
@@ -290,6 +313,7 @@ type SEListener struct {
 	liveNodes int
 	queryNodes int
 	collections int
+	collStateEvents int
 	collectionStates map[string]*CollectionState
 }
 
@@ -306,5 +330,6 @@ func (l *SEListener)SolrCollectionsChanged(collections []string) {
 }
 
 func (l *SEListener)SolrCollectionChanged(name string, collectionState *CollectionState) {
+	l.collStateEvents++;
 	l.collectionStates[name] = collectionState
 }
