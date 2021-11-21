@@ -198,27 +198,32 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	}
 }
 func (c *SolrMonitor) updateCollection(path string, children []string) error {
-	err := c.updateCollectionState(path, children)
+	rs, err := c.updateCollectionState(path, children)
 
-	if err == nil {
+	if err == nil && rs != nil && len(*rs) > 0 {
 		coll := c.getCollFromPath(path)
 		if coll != nil {
-			c.callSolrListener(coll)
+			c.mu.RLock()
+			defer c.mu.RUnlock()
+			if c.solrEventListener != nil {
+				collName := c.getCollNameFromPath(path)
+				c.solrEventListener.SolrCollectionReplicaStatesChanged(collName, rs)
+			}
 		}
 	}
 
 	return err
 }
 
-func (c *SolrMonitor) updateCollectionState(path string, children []string) error {
+func (c *SolrMonitor) updateCollectionState(path string, children []string) (*map[string]*PerReplicaState, error) {
 	c.logger.Printf("updateCollectionState: children %s", children)
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
-		return nil
+		return nil, nil
 	}
 
-	rmap := map[string]*PerReplicaState{}
+	rmap := make(map[string]*PerReplicaState)
 
 	for _, r := range children {
 		replicaParts := strings.Split(r, ":")
@@ -282,7 +287,7 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) erro
 		}
 	}
 
-	return nil
+	return &rmap, nil
 }
 
 func (c *SolrMonitor) shouldWatchChildren(path string) bool {
@@ -322,7 +327,7 @@ func (c *SolrMonitor) callSolrListener(coll *collection) {
 	if c.solrEventListener != nil {
 		c.mu.RLock()
 		defer c.mu.RUnlock()
-		c.solrEventListener.SolrCollectionChanged(coll.name, coll.collectionState)
+		c.solrEventListener.SolrCollectionStateChanged(coll.name, coll.collectionState)
 	}
 }
 

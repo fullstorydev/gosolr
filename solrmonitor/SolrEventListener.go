@@ -13,6 +13,9 @@ type SolrEventListener interface {
 	// all the collections in the solr cluster
 	SolrCollectionsChanged(collections []string)
 
-	// current collection state
-	SolrCollectionChanged(name string, collectionState *CollectionState)
+	// current collection state change
+	SolrCollectionStateChanged(name string, collectionState *CollectionState)
+
+	// collection replica state changed
+	SolrCollectionReplicaStatesChanged(name string, replicaStates *map[string]*PerReplicaState)
 }
