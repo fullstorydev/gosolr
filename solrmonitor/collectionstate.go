@@ -53,3 +53,11 @@ type PerReplicaState struct {
 	// If "true", this replica is the shard leader
 	Leader string `json:"leader,omitempty"`
 }
+
+func (prs *PerReplicaState ) isActive() bool {
+	return prs.State == "active"
+}
+
+func (prs *PerReplicaState ) isLeader() bool {
+	return prs.Leader == "true"
+}
