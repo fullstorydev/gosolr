@@ -335,7 +335,7 @@ func (l *SEListener) SolrCollectionStateChanged(name string, collectionState *Co
 	l.collectionStates[name] = collectionState
 }
 
-func (l *SEListener) SolrCollectionReplicaStatesChanged(name string, replicaStates *map[string]*PerReplicaState) {
+func (l *SEListener) SolrCollectionReplicaStatesChanged(name string, replicaStates map[string]*PerReplicaState) {
 	l.collReplicaChangeEvents++;
 }
 

@@ -200,7 +200,7 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 func (c *SolrMonitor) updateCollection(path string, children []string) error {
 	rs, err := c.updateCollectionState(path, children)
 
-	if err == nil && rs != nil && len(*rs) > 0 {
+	if err == nil && rs != nil && len(rs) > 0 {
 		coll := c.getCollFromPath(path)
 		if coll != nil {
 			c.mu.RLock()
@@ -215,7 +215,7 @@ func (c *SolrMonitor) updateCollection(path string, children []string) error {
 	return err
 }
 
-func (c *SolrMonitor) updateCollectionState(path string, children []string) (*map[string]*PerReplicaState, error) {
+func (c *SolrMonitor) updateCollectionState(path string, children []string) (map[string]*PerReplicaState, error) {
 	c.logger.Printf("updateCollectionState: children %s", children)
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
@@ -287,7 +287,7 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) (*ma
 		}
 	}
 
-	return &rmap, nil
+	return rmap, nil
 }
 
 func (c *SolrMonitor) shouldWatchChildren(path string) bool {
