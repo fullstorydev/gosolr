@@ -368,13 +368,14 @@ func (c *SolrMonitor) start() error {
 	liveNodesPath := c.solrRoot + liveNodesPath
 	queryNodesPath := c.solrRoot + liveQueryNodesPath
 	c.zkWatcher.Start(c.zkCli, callbacks{c})
-	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
-		return err
-	}
+
 	if err := c.zkWatcher.MonitorChildren(liveNodesPath); err != nil {
 		return err
 	}
 	if err := c.zkWatcher.MonitorChildren(queryNodesPath); err != nil {
+		return err
+	}
+	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
 		return err
 	}
 	return nil

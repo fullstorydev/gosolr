@@ -54,10 +54,10 @@ type PerReplicaState struct {
 	Leader string `json:"leader,omitempty"`
 }
 
-func (prs *PerReplicaState ) isActive() bool {
+func (prs *PerReplicaState ) IsActive() bool {
 	return prs.State == "active"
 }
 
-func (prs *PerReplicaState ) isLeader() bool {
+func (prs *PerReplicaState ) IsLeader() bool {
 	return prs.Leader == "true"
 }
