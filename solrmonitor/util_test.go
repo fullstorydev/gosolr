@@ -9,7 +9,7 @@ import (
 
 const (
 	checkTimeout  = 3 * time.Second
-	checkInterval = 10 * time.Millisecond
+	checkInterval = 500 * time.Millisecond
 )
 
 func shouldBecomeEq(t *testing.T, expected int32, actualFunc func() int32) {
@@ -50,7 +50,59 @@ func shouldExist(t *testing.T, sm *SolrMonitor, name string) {
 		}
 		time.Sleep(checkInterval)
 	}
-	t.Errorf("expected %s to exist, but it does not", name)
+	t.Fatalf("expected %s to exist, but it does not", name)
+}
+
+func prsShouldExist(t *testing.T, sm *SolrMonitor, name string, shard string, replica string, rstate string, leader string, version int32) {
+	t.Helper()
+
+	for end := time.Now().Add(checkTimeout); time.Now().Before(end); {
+		time.Sleep(checkInterval)
+		collectionState, err := sm.GetCollectionState(name)
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+		if collectionState != nil {
+			// GetCurrentState should be consistent
+			state, err := sm.GetCurrentState()
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			val, ok := state[name]
+			if val == nil || !ok {
+				t.Errorf("expected %s to exist in state map, but it does not", name)
+				continue
+			}
+
+			if !val.isPRSEnabled() {
+				t.Errorf("expected collection %s to be PRS", name)
+				continue
+			}
+
+			s, sfound := val.Shards[shard]
+			if !sfound {
+				t.Errorf("expected collection %s shard %s to be exist", name, shard)
+				continue
+			}
+
+			r, rfound := s.Replicas[replica]
+			if !rfound {
+				t.Errorf("expected shard %s 's, replica %s to be exist", shard, replica)
+				continue
+			}
+
+			if r.State != rstate || r.Leader != leader || r.Version != version {
+				t.Errorf("expected replica [%v] should be state[%s], leader[%s] and version[%d] ", r, rstate, leader, version)
+				continue
+			}
+
+			return // success
+		}
+	}
+
+	t.Fatalf("expected collection %s 's replica updated", name)
 }
 
 func shouldNotExist(t *testing.T, sm *SolrMonitor, name string) {
@@ -79,7 +131,7 @@ func shouldNotExist(t *testing.T, sm *SolrMonitor, name string) {
 		}
 		time.Sleep(checkInterval)
 	}
-	t.Errorf("expected %s to not exist, but it does", name)
+	t.Fatalf("expected %s to not exist, but it does", name)
 }
 
 func shouldError(t *testing.T, sm *SolrMonitor, name string) {

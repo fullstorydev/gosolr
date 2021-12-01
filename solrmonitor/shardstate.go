@@ -23,10 +23,10 @@ import (
 )
 
 type ShardState struct {
-	Parent   string                  `json:"parent"`
-	Range    string                  `json:"range"` // e.g. "80000000-b332ffff"
-	State    string                  `json:"state"` // e.g. "active", "inactive"
-	Replicas map[string]ReplicaState `json:"replicas,omitempty"`
+	Parent   string                   `json:"parent"`
+	Range    string                   `json:"range"` // e.g. "80000000-b332ffff"
+	State    string                   `json:"state"` // e.g. "active", "inactive"
+	Replicas map[string]*ReplicaState `json:"replicas,omitempty"`
 
 	rangeBounds      bounds
 	rangeInitialized bool
@@ -36,6 +36,10 @@ type bounds struct {
 	lo  int32
 	hi  int32
 	err error
+}
+
+func (s *ShardState) String() string {
+	return fmt.Sprintf("\nShardState{Range:%s, State:%s, Replicas=%+v, rangeBounds=%+v}\n", s.Range, s.State, s.Replicas, s.rangeBounds)
 }
 
 func (s ShardState) IsActive() bool {

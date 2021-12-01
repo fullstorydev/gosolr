@@ -14,20 +14,50 @@
 
 package solrmonitor
 
+import "fmt"
+
 type CollectionState struct {
-	Shards            map[string]ShardState `json:"shards"`            // map from shard name to shard state
-	ReplicationFactor string                `json:"replicationFactor"` // e.g. "1" (yes, these are strings, not numbers)
-	Router            Router                `json:"router"`            // e.g. {"name":"compositeId"}
-	MaxShardsPerNode  string                `json:"maxShardsPerNode"`  // e.g. "1" (yes, these are strings, not numbers)
-	AutoAddReplicas   string                `json:"autoAddReplicas"`   // e.g. "false" (yes, these are strings, not bools)
+	Shards            map[string]*ShardState `json:"shards"`            // map from shard name to shard state
+	ReplicationFactor string                 `json:"replicationFactor"` // e.g. "1" (yes, these are strings, not numbers)
+	Router            Router                 `json:"router"`            // e.g. {"name":"compositeId"}
+	MaxShardsPerNode  string                 `json:"maxShardsPerNode"`  // e.g. "1" (yes, these are strings, not numbers)
+	AutoAddReplicas   string                 `json:"autoAddReplicas"`   // e.g. "false" (yes, these are strings, not bools)
 
 	// These fields are synthetic. They ARE present in COLLECTIONSTATUS response in
 	// solr collection API, but they are NOT in state.json docs in Zookeeper.
 
-	ConfigName    string `json:"configName,omitempty"`   // the name of the node in solr/configs (in ZK) that this collection uses
-	ZkNodeVersion int32  `json:"znodeVersion,omitempty"` // the ZK node version this state snapshot represents
+	ConfigName      string `json:"configName,omitempty"`   // the name of the node in solr/configs (in ZK) that this collection uses
+	ZkNodeVersion   int32  `json:"znodeVersion,omitempty"` // the ZK node version this state snapshot represents
+	PerReplicaState string `json:"perReplicaState"`        // whether collection keeps state for each replica separately
+}
+
+func (cs *CollectionState) String() string {
+	return fmt.Sprintf("CollectionState\n{Shards:%+v, PerReplicaState:%s}\n", cs.Shards, cs.PerReplicaState)
+}
+
+func (cs *CollectionState) isPRSEnabled() bool {
+	return cs.PerReplicaState == "true"
 }
 
 type Router struct {
 	Name string `json:"name"` // e.g. "compositeId"
+}
+
+type PerReplicaState struct {
+	// name of the replica
+	Name string `json:"name"`
+	// replica's state version
+	Version int32 `json:"version"`
+	// is replica active
+	State string `json:"state"`
+	// If "true", this replica is the shard leader
+	Leader string `json:"leader,omitempty"`
+}
+
+func (prs *PerReplicaState) IsActive() bool {
+	return prs.State == "active"
+}
+
+func (prs *PerReplicaState) IsLeader() bool {
+	return prs.Leader == "true"
 }
