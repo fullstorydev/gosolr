@@ -137,10 +137,9 @@ func TestZkStorage_IsDisabled(t *testing.T) {
 
 	testutil.createWithData(s.disabledPath() + "/test", "testDisabled")
 
-	if isDisabled, _ := s.IsDisabled(); !IsDisabled{
+	if isDisabled, _ := s.IsDisabled(); !IsDisabled {
 		t.Error("expected to be disabled")
-	} else {
-    reason, _ := s.GetDisabledReasons(); reason[0] != "testDisabled" {
+	} else if reasons, _ := s.GetDisabledReasons(); reasons[0] != "testDisabled" {
 		t.Errorf("expect reason is \"testDisabled\"; got %s", reason)
 	}
 
