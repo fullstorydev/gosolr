@@ -156,19 +156,19 @@ func TestZkStorage_SetDisabled(t *testing.T) {
 		t.Errorf("%s should not exist", s.disabledPath())
 	}
 
-	s.AddDisabledReason("testor", "testSetDisabled")
+	s.AddDisabledReason("tester", "testSetDisabled")
 	if isDisabled, _ := s.IsDisabled(); !isDisabled {
 		t.Error("expected to be disabled")
 	}
-	if ok, _, _ := s.conn.Exists(s.disabledPath() + "/testor"); !ok {
+	if ok, _, _ := s.conn.Exists(s.disabledPath() + "/tester"); !ok {
 		t.Errorf("%s should exist", s.disabledPath())
 	}
 
-	s.RemoveDisabledReason("testor")
+	s.RemoveDisabledReason("tester")
 	if isDisabled, _ := s.IsDisabled(); isDisabled {
 		t.Error("expected to not be disabled")
 	}
-	if ok, _, _ := s.conn.Exists(s.disabledPath() + "/testor"); ok {
+	if ok, _, _ := s.conn.Exists(s.disabledPath() + "/tester"); ok {
 		t.Errorf("%s should not exist", s.disabledPath())
 	}
 }
