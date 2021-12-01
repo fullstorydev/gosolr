@@ -17,6 +17,7 @@ package smstorage
 import (
 	"bytes"
 	"encoding/json"
+  "fmt"
 	"sort"
 	"sync"
 	"time"
@@ -205,51 +206,81 @@ func (s *ZkStorage) GetStationaryOrgList() ([]string, error) {
 	return children, nil
 }
 
-func (s *ZkStorage) IsDisabled() (bool, string) {
+func (s *ZkStorage) IsDisabled() (bool, error) {
 	path := s.disabledPath()
-	data, _, err := s.conn.Get(path)
-	if err != nil {
-		// If no node, it is not disabled.
-		if err == zk.ErrNoNode {
-			return false, ""
-		}
+	children, _, err := s.conn.Children(path)
+  if err != nil {
+    s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
+    return true, err
 
-		// For any other error, log and assume that bad-data means disabled.
-		if s.logger != nil {
-			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
-		}
-		return true, ""
-	}
-	return true, string(data)
+  }
+	return len(children) > 0, nil
 }
 
-func (s *ZkStorage) SetDisabled(disabled bool, reason string) error {
+func (s *ZkStorage) GetDisabledReasons() (map[string]string, error) {
+  reasons := make(map[string]string)
 	path := s.disabledPath()
-	if disabled {
-		_, err := s.conn.Create(path, []byte(reason), 0, zk.WorldACL(zk.PermAll))
-		if err != nil && err != zk.ErrNodeExists {
-			return smutil.Cherrf(err, "could not create %s in ZK", path)
-		}
-	} else {
-		err := s.conn.Delete(path, -1)
-		if err != nil && err != zk.ErrNoNode {
-			return smutil.Cherrf(err, "could not delete %s in ZK", path)
-		}
+	children, _, err := s.conn.Children(path)
+  if err != nil {
+    s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
+    return reasons, err
+  }
+
+  for _, child := range children {
+	  childPath := fmt.Sprintf("%s/%s", s.disabledPath(), child)
+    reason, _, err := s.conn.Get(childPath)
+    if err != nil {
+      return reasons, err
+    }
+    reasons[child] = string(reason)
+  }
+  return reasons, nil
+}
+
+// TODO(emily) check for existing reason
+func (s *ZkStorage) AddDisabledReason(requestor string, reason string) error {
+	path := fmt.Sprintf("%s/%s", s.disabledPath(), requestor)
+	_, err := s.conn.Create(path, []byte(reason), 0, zk.WorldACL(zk.PermAll))
+	if err != nil && err != zk.ErrNodeExists {
+		return smutil.Cherrf(err, "could not create %s in ZK", path)
 	}
 	return nil
 }
 
+func (s *ZkStorage) RemoveDisabledReason(requestor string) error {
+	path := fmt.Sprintf("%s/%s", s.disabledPath(), requestor)
+	err := s.conn.Delete(path, -1)
+	if err != nil && err != zk.ErrNoNode {
+		return smutil.Cherrf(err, "could not delete %s in ZK", path)
+	}
+  return nil
+}
+
 func (s *ZkStorage) GetDisabledTime() time.Time {
 	path := s.disabledPath()
-	exists, stat, err := s.conn.Exists(path)
-	if err != nil || !exists {
-		if s.logger != nil && err != nil {
-			s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
-		}
-		return time.Time{}
-	}
+	children, _, err := s.conn.Children(path)
+  if err != nil {
+    s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
+    return time.Time{}
+  }
+
+  // Can use UnixMilli() once on go 1.17
+  oldest := time.Now().UnixNano() / int64(time.Millisecond)
+  for _, child := range children {
+	  path := fmt.Sprintf("%s/%s", s.disabledPath(), child)
+	  if exists, stat, err := s.conn.Exists(path); err != nil || !exists {
+		  if s.logger != nil && err != nil {
+			  s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
+		  }
+		  return time.Time{}
+	  } else {
+      if stat.Ctime < oldest {
+        oldest = stat.Ctime
+      }
+    }
+  }
 	// the Ctime is in ms since epoch, so convert before returning
-	return time.Unix(stat.Ctime/1000, 0)
+	return time.Unix(oldest/1000, 0)
 }
 
 func (s *ZkStorage) IsSplitsDisabled() bool {

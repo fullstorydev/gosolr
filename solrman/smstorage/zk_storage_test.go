@@ -131,15 +131,16 @@ func TestZkStorage_IsDisabled(t *testing.T) {
 	s, testutil := setup(t)
 	defer testutil.teardown()
 
-	if isDisabled, reason := s.IsDisabled(); isDisabled {
+	if isDisabled, _ := s.IsDisabled(); isDisabled {
 		t.Error("expected to not be disabled")
 	}
 
-	testutil.createWithData(s.disabledPath(), "testDisabled")
+	testutil.createWithData(s.disabledPath() + "/test", "testDisabled")
 
-	if isDisabled, reason := s.IsDisabled(); !IsDisabled {
+	if isDisabled, _ := s.IsDisabled(); !IsDisabled{
 		t.Error("expected to be disabled")
-	} else if reason != "testDisabled" {
+	} else {
+    reason, _ := s.GetDisabledReasons(); reason[0] != "testDisabled" {
 		t.Errorf("expect reason is \"testDisabled\"; got %s", reason)
 	}
 
@@ -156,19 +157,19 @@ func TestZkStorage_SetDisabled(t *testing.T) {
 		t.Errorf("%s should not exist", s.disabledPath())
 	}
 
-	s.SetDisabled(true, "testSetDisabled")
-	if isDisabled, reason := s.IsDisabled(); !isDisabled {
+	s.AddDisabledReason("testor", "testSetDisabled")
+	if isDisabled, _ := s.IsDisabled(); !isDisabled {
 		t.Error("expected to be disabled")
 	}
-	if ok, _, _ := s.conn.Exists(s.disabledPath()); !ok {
+	if ok, _, _ := s.conn.Exists(s.disabledPath() + "/testor"); !ok {
 		t.Errorf("%s should exist", s.disabledPath())
 	}
 
-	s.SetDisabled(false)
-	if isDisabled, reason := s.IsDisabled(); isDisabled {
+	s.RemoveDisabledReason("testor")
+	if isDisabled, _:= s.IsDisabled(); isDisabled {
 		t.Error("expected to not be disabled")
 	}
-	if ok, _, _ := s.conn.Exists(s.disabledPath()); ok {
+	if ok, _, _ := s.conn.Exists(s.disabledPath() + "/testor"); ok {
 		t.Errorf("%s should not exist", s.disabledPath())
 	}
 }

@@ -25,8 +25,7 @@ import (
 // Reference implementation for testing, don't use in production.
 type InMemoryStorage struct {
 	mu                             sync.RWMutex
-	disabled                       bool
-	disabledReason                 string
+	disabledReasons                map[string]string
 	splitsDisabled                 bool
 	tripsDisabled                  bool
 	movesDisabled                  bool
@@ -102,20 +101,35 @@ func (s *InMemoryStorage) GetStationaryOrgList() ([]string, error) {
 	return nil, nil
 }
 
-func (s *InMemoryStorage) IsDisabled() (bool, string) {
+func (s *InMemoryStorage) IsDisabled() (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.disabled, s.disabledReason
+	return len(s.disabledReasons) > 0, nil
 }
 
-func (s *InMemoryStorage) SetDisabled(disabled bool, reason string) error {
+func (s *InMemoryStorage) GetDisabledReasons() (map[string]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.disabledReasons, nil
+
+}
+
+func (s *InMemoryStorage) AddDisabledReason(requestor string, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.disabled = disabled
-	s.disabledReason = reason
+	s.disabledReasons[requestor] = reason
 	return nil
+}
+
+func (s *InMemoryStorage) RemoveDisabledReason(requestor string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.disabledReasons, requestor)
+  return nil
 }
 
 func (s *InMemoryStorage) GetDisabledTime() time.Time {
