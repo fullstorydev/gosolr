@@ -135,7 +135,7 @@ func TestZkStorage_IsDisabled(t *testing.T) {
 		t.Error("expected to not be disabled")
 	}
 
-	testutil.createWithData(s.disabledPath() + "/test", "testDisabled")
+	testutil.createWithData(s.disabledPath()+"/test", "testDisabled")
 
 	if isDisabled, _ := s.IsDisabled(); !IsDisabled {
 		t.Error("expected to be disabled")
@@ -165,7 +165,7 @@ func TestZkStorage_SetDisabled(t *testing.T) {
 	}
 
 	s.RemoveDisabledReason("testor")
-	if isDisabled, _:= s.IsDisabled(); isDisabled {
+	if isDisabled, _ := s.IsDisabled(); isDisabled {
 		t.Error("expected to not be disabled")
 	}
 	if ok, _, _ := s.conn.Exists(s.disabledPath() + "/testor"); ok {

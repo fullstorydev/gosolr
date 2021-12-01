@@ -17,7 +17,7 @@ package smstorage
 import (
 	"bytes"
 	"encoding/json"
-  "fmt"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -209,32 +209,32 @@ func (s *ZkStorage) GetStationaryOrgList() ([]string, error) {
 func (s *ZkStorage) IsDisabled() (bool, error) {
 	path := s.disabledPath()
 	children, _, err := s.conn.Children(path)
-  if err != nil {
-    s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
-    return true, err
+	if err != nil {
+		s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
+		return true, err
 
-  }
+	}
 	return len(children) > 0, nil
 }
 
 func (s *ZkStorage) GetDisabledReasons() (map[string]string, error) {
-  reasons := make(map[string]string)
+	reasons := make(map[string]string)
 	path := s.disabledPath()
 	children, _, err := s.conn.Children(path)
-  if err != nil {
-    s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
-    return reasons, err
-  }
+	if err != nil {
+		s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
+		return reasons, err
+	}
 
-  for _, child := range children {
-	  childPath := fmt.Sprintf("%s/%s", s.disabledPath(), child)
-    reason, _, err := s.conn.Get(childPath)
-    if err != nil {
-      return reasons, err
-    }
-    reasons[child] = string(reason)
-  }
-  return reasons, nil
+	for _, child := range children {
+		childPath := fmt.Sprintf("%s/%s", s.disabledPath(), child)
+		reason, _, err := s.conn.Get(childPath)
+		if err != nil {
+			return reasons, err
+		}
+		reasons[child] = string(reason)
+	}
+	return reasons, nil
 }
 
 // TODO(emily) check for existing reason
@@ -253,32 +253,32 @@ func (s *ZkStorage) RemoveDisabledReason(requestor string) error {
 	if err != nil && err != zk.ErrNoNode {
 		return smutil.Cherrf(err, "could not delete %s in ZK", path)
 	}
-  return nil
+	return nil
 }
 
 func (s *ZkStorage) GetDisabledTime() time.Time {
 	path := s.disabledPath()
 	children, _, err := s.conn.Children(path)
-  if err != nil {
-    s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
-    return time.Time{}
-  }
+	if err != nil {
+		s.logger.Errorf("could not check the children at %s in ZK: %s", path, err)
+		return time.Time{}
+	}
 
-  // Can use UnixMilli() once on go 1.17
-  oldest := time.Now().UnixNano() / int64(time.Millisecond)
-  for _, child := range children {
-	  path := fmt.Sprintf("%s/%s", s.disabledPath(), child)
-	  if exists, stat, err := s.conn.Exists(path); err != nil || !exists {
-		  if s.logger != nil && err != nil {
-			  s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
-		  }
-		  return time.Time{}
-	  } else {
-      if stat.Ctime < oldest {
-        oldest = stat.Ctime
-      }
-    }
-  }
+	// Can use UnixMilli() once on go 1.17
+	oldest := time.Now().UnixNano() / int64(time.Millisecond)
+	for _, child := range children {
+		path := fmt.Sprintf("%s/%s", s.disabledPath(), child)
+		if exists, stat, err := s.conn.Exists(path); err != nil || !exists {
+			if s.logger != nil && err != nil {
+				s.logger.Errorf("could not check exists at %s in ZK: %s", path, err)
+			}
+			return time.Time{}
+		} else {
+			if stat.Ctime < oldest {
+				oldest = stat.Ctime
+			}
+		}
+	}
 	// the Ctime is in ms since epoch, so convert before returning
 	return time.Unix(oldest/1000, 0)
 }

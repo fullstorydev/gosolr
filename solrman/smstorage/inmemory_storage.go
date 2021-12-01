@@ -129,7 +129,7 @@ func (s *InMemoryStorage) RemoveDisabledReason(requestor string) error {
 	defer s.mu.Unlock()
 
 	delete(s.disabledReasons, requestor)
-  return nil
+	return nil
 }
 
 func (s *InMemoryStorage) GetDisabledTime() time.Time {
