@@ -317,8 +317,8 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	coll := c.getCollFromPath(path)
 	if coll != nil {
 		coll.setData(data, version)
-		coll.startMonitoringReplicaStatus()
 		c.callSolrListener(coll)
+		coll.startMonitoringReplicaStatus()
 	}
 	return nil
 }
