@@ -24,8 +24,8 @@ After initialization it delivers events for following condition
 	4.2	SolrCollectionStateChanged fires with all collections name except deleted collection.
 5. If collection get deleted - for PRS
 	5.1 following events happen
-		5.1.1 SolrCollectionReplicaStatesChanged fires for all replicas/shards in collection
-		5.1.2 SolrCollectionStateChanged fires for collection's state.json, which get updated for each shard/replica
+		5.1.1 SolrCollectionStateChanged fires for collection's base state.json
+		5.1.2 SolrCollectionReplicaStatesChanged fires for all replicas/shards in collection
 	5.2 SolrCollectionsChanged fires with all collections name except deleted collection.
 */
 type SolrEventListener interface {
