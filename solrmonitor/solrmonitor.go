@@ -150,8 +150,6 @@ func (c *SolrMonitor) GetCollectionState(name string) (*CollectionState, error) 
 }
 
 func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	coll := c.collections[name]
 
 	if coll == nil {
