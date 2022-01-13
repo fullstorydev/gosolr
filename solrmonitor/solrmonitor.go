@@ -155,7 +155,8 @@ func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error
 	if coll == nil {
 		return nil, nil
 	}
-
+	coll.mu.RLock()
+	defer coll.mu.RUnlock()
 	return coll.collectionState, nil
 }
 
@@ -214,7 +215,7 @@ func (c *SolrMonitor) updateCollection(path string, children []string) error {
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) (map[string]*PerReplicaState, error) {
-	c.logger.Printf("updateCollectionState: children %s", children)
+	c.logger.Printf("updateCollectionState: path %s, children %d", path, len(children))
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
@@ -269,8 +270,9 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) (map
 
 		rmap[prs.Name] = prs
 	}
-	coll.parent.mu.Lock()
-	defer coll.parent.mu.Unlock()
+	c.logger.Printf("updateCollectionState: updating prs state %s", rmap)
+	coll.mu.Lock()
+	defer coll.mu.Unlock()
 	//update the collection state based on new PRS (per replica state)
 	for _, shard := range coll.collectionState.Shards {
 		for rname, rstate := range shard.Replicas {
@@ -527,6 +529,7 @@ func (coll *collection) start() error {
 }
 
 func (coll *collection) setData(data string, version int32) {
+	coll.parent.logger.Printf("setData:updating the collection %s ", coll.name)
 	if data == "" {
 		coll.parent.logger.Printf("%s: no data", coll.name)
 	}
