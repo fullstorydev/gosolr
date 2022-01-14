@@ -318,7 +318,9 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	if coll != nil {
 		coll.setData(data, version)
 		c.callSolrListener(coll)
-		coll.startMonitoringReplicaStatus()
+		if (coll.isPRSEnabled()) {
+			coll.startMonitoringReplicaStatus()
+		}
 	}
 	return nil
 }
@@ -567,7 +569,7 @@ func (coll *collection) startMonitoringReplicaStatus() {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
 
 	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
-	if !coll.hasWatch() && coll.isPRSEnabled() {
+	if !coll.hasWatch() {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
 			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
@@ -589,5 +591,7 @@ func (coll *collection) hasWatch() bool {
 }
 
 func (coll *collection) isPRSEnabled() bool {
+	coll.mu.RLock()
+	defer coll.mu.RUnlock()
 	return coll.collectionState != nil && coll.collectionState.isPRSEnabled()
 }
