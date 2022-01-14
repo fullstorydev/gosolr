@@ -466,9 +466,7 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
 	defer c.mu.Unlock()
 	c.liveNodes = liveNodes
 	if c.solrEventListener != nil {
-		c.logger.Printf("SolrLiveNodesChanged started %s", liveNodes)
 		c.solrEventListener.SolrLiveNodesChanged(liveNodes)
-		c.logger.Printf("SolrLiveNodesChanged ended %s", liveNodes)
 	}
 	return nil
 }
@@ -479,9 +477,7 @@ func (c *SolrMonitor) updateLiveQueryNodes(queryNodes []string) error {
 	defer c.mu.Unlock()
 	c.queryNodes = queryNodes
 	if c.solrEventListener != nil {
-		c.logger.Printf("SolrQueryNodesChanged started %s", queryNodes)
 		c.solrEventListener.SolrQueryNodesChanged(c.queryNodes)
-		c.logger.Printf("SolrQueryNodesChanged started %s", queryNodes)
 	}
 	return nil
 }
@@ -568,19 +564,28 @@ func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, 
 }
 
 func (coll *collection) startMonitoringReplicaStatus() {
-	coll.mu.Lock()
-	defer coll.mu.Unlock()
-
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
 
 	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
-	if !coll.isWatched && coll.isPRSEnabled() {
+	if !coll.hasWatch() && coll.isPRSEnabled() {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
 			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
-			coll.isWatched = true
+			coll.watchAdded()
 		}
 	}
+}
+
+func (coll *collection) watchAdded() {
+	coll.mu.Lock()
+	defer coll.mu.Unlock()
+	coll.isWatched = true
+}
+
+func (coll *collection) hasWatch() bool {
+	coll.mu.RLock()
+	defer coll.mu.RUnlock()
+	return coll.isWatched
 }
 
 func (coll *collection) isPRSEnabled() bool {
