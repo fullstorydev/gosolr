@@ -318,7 +318,7 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	if coll != nil {
 		coll.setData(data, version)
 		c.callSolrListener(coll)
-		if (coll.isPRSEnabled()) {
+		if coll.isPRSEnabled() {
 			coll.startMonitoringReplicaStatus()
 		}
 	}
