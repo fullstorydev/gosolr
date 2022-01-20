@@ -150,14 +150,13 @@ func (c *SolrMonitor) GetCollectionState(name string) (*CollectionState, error) 
 }
 
 func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	coll := c.collections[name]
 
 	if coll == nil {
 		return nil, nil
 	}
-
+	coll.mu.RLock()
+	defer coll.mu.RUnlock()
 	return coll.collectionState, nil
 }
 
@@ -216,7 +215,7 @@ func (c *SolrMonitor) updateCollection(path string, children []string) error {
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) (map[string]*PerReplicaState, error) {
-	c.logger.Printf("updateCollectionState: children %s", children)
+	c.logger.Printf("updateCollectionState: path %s, children %d", path, len(children))
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
@@ -271,8 +270,9 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) (map
 
 		rmap[prs.Name] = prs
 	}
-	coll.parent.mu.Lock()
-	defer coll.parent.mu.Unlock()
+	c.logger.Printf("updateCollectionState: updating prs state %s", rmap)
+	coll.mu.Lock()
+	defer coll.mu.Unlock()
 	//update the collection state based on new PRS (per replica state)
 	for _, shard := range coll.collectionState.Shards {
 		for rname, rstate := range shard.Replicas {
@@ -317,8 +317,10 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	coll := c.getCollFromPath(path)
 	if coll != nil {
 		coll.setData(data, version)
-		coll.startMonitoringReplicaStatus()
 		c.callSolrListener(coll)
+		if coll.isPRSEnabled() {
+			coll.startMonitoringReplicaStatus()
+		}
 	}
 	return nil
 }
@@ -466,9 +468,7 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
 	defer c.mu.Unlock()
 	c.liveNodes = liveNodes
 	if c.solrEventListener != nil {
-		c.logger.Printf("SolrLiveNodesChanged started %s", liveNodes)
 		c.solrEventListener.SolrLiveNodesChanged(liveNodes)
-		c.logger.Printf("SolrLiveNodesChanged ended %s", liveNodes)
 	}
 	return nil
 }
@@ -479,9 +479,7 @@ func (c *SolrMonitor) updateLiveQueryNodes(queryNodes []string) error {
 	defer c.mu.Unlock()
 	c.queryNodes = queryNodes
 	if c.solrEventListener != nil {
-		c.logger.Printf("SolrQueryNodesChanged started %s", queryNodes)
 		c.solrEventListener.SolrQueryNodesChanged(c.queryNodes)
-		c.logger.Printf("SolrQueryNodesChanged started %s", queryNodes)
 	}
 	return nil
 }
@@ -529,6 +527,7 @@ func (coll *collection) start() error {
 }
 
 func (coll *collection) setData(data string, version int32) {
+	coll.parent.logger.Printf("setData:updating the collection %s ", coll.name)
 	if data == "" {
 		coll.parent.logger.Printf("%s: no data", coll.name)
 	}
@@ -567,21 +566,32 @@ func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, 
 }
 
 func (coll *collection) startMonitoringReplicaStatus() {
-	coll.mu.Lock()
-	defer coll.mu.Unlock()
-
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
 
 	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
-	if !coll.isWatched && coll.isPRSEnabled() {
+	if !coll.hasWatch() {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
 			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
-			coll.isWatched = true
+			coll.watchAdded()
 		}
 	}
 }
 
+func (coll *collection) watchAdded() {
+	coll.mu.Lock()
+	defer coll.mu.Unlock()
+	coll.isWatched = true
+}
+
+func (coll *collection) hasWatch() bool {
+	coll.mu.RLock()
+	defer coll.mu.RUnlock()
+	return coll.isWatched
+}
+
 func (coll *collection) isPRSEnabled() bool {
+	coll.mu.RLock()
+	defer coll.mu.RUnlock()
 	return coll.collectionState != nil && coll.collectionState.isPRSEnabled()
 }
