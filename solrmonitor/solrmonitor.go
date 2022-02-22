@@ -277,12 +277,12 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) (map
 	for _, shard := range coll.collectionState.Shards {
 		for rname, rstate := range shard.Replicas {
 			if prs, found := rmap[rname]; found {
-				//if version is more than current then take that state
-				if prs.Version > rstate.Version {
-					rstate.Version = prs.Version
-					rstate.Leader = prs.Leader
-					rstate.State = prs.State
+				if prs.Version < rstate.Version {
+					c.logger.Printf("WARNING: PRS update with lower version than received previously. Existing: %v, Update: %v", rstate, prs)
 				}
+				rstate.Version = prs.Version
+				rstate.Leader = prs.Leader
+				rstate.State = prs.State
 			}
 		}
 	}
