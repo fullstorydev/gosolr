@@ -217,6 +217,12 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 					continue
 				}
 
+				// If the source is substantially under the maximum size, only move if the target node is substantially smaller than the source node.
+				// This is to avoid move thrashing in a cluster that is drastically below capacity while nodes are rapidly growing.
+				if source.Size < 10*m.MaxSizePerNode && target.Size+5*core.Size >= source.Size {
+					continue
+				}
+
 				// Found a good candidate.
 				return &Move{
 					Core:     core,
