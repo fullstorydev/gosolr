@@ -311,25 +311,41 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 }
 
 func (c *SolrMonitor) dataChanged(path string, data string, version int32) error {
-	if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
-		return fmt.Errorf("unknown dataChanged: %s", path)
-	}
-	coll := c.getCollFromPath(path)
-	if coll != nil {
-		coll.setData(data, version)
-		c.callSolrListener(coll)
-		if coll.isPRSEnabled() {
-			coll.startMonitoringReplicaStatus()
+	collectionsPrefix := c.solrRoot + "/collections/"
+	if strings.HasPrefix(path, collectionsPrefix) {
+		// we will always need the collection
+		coll := c.getCollFromPath(path)
+		if strings.HasSuffix(path, "/state.json") {
+			// common state.json change
+			if coll != nil {
+				state := coll.setStateData(data, version)
+				c.callSolrListener(coll.name, state)
+				if coll.isPRSEnabled() {
+					coll.startMonitoringReplicaStatus()
+				}
+			}
+			return nil
+		} else if trimmed := strings.TrimPrefix(path, collectionsPrefix); !strings.Contains(trimmed, "/") {
+			// less common (usually just initialization) collection change
+			if coll != nil && coll.name == trimmed {
+				state := coll.setCollectionData(data)
+				if state != nil {
+					// for collection data, we don't hit the callback until the collection state is available as well
+					// on delete, the standard state.json flow will handle passing back the nil state once cleared
+					c.callSolrListener(coll.name, state)
+				}
+			}
+			return nil
 		}
 	}
-	return nil
+	return fmt.Errorf("unknown dataChanged: %s", path)
 }
 
-func (c *SolrMonitor) callSolrListener(coll *collection) {
+func (c *SolrMonitor) callSolrListener(name string, state *CollectionState) {
 	if c.solrEventListener != nil {
 		c.mu.RLock()
 		defer c.mu.RUnlock()
-		c.solrEventListener.SolrCollectionStateChanged(coll.name, coll.collectionState)
+		c.solrEventListener.SolrCollectionStateChanged(name, state)
 	}
 }
 
@@ -491,8 +507,20 @@ type collection struct {
 	zkNodeVersion int32        // the version of the state.json data, or -1 if no state.json node exists
 	parent        *SolrMonitor // if nil, this collection object was removed from the ClusterState
 
+	configName      string // held onto separately due to different lifecycle, copied over to collection state as needed
 	collectionState *CollectionState
 	isWatched       bool
+}
+
+func parseCollectionData(data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", nil
+	}
+	var state zkCollectionState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return "", err
+	}
+	return state.ConfigName, nil
 }
 
 func parseStateData(name string, data []byte, version int32) (*CollectionState, error) {
@@ -522,28 +550,63 @@ func parseStateData(name string, data []byte, version int32) (*CollectionState, 
 }
 
 func (coll *collection) start() error {
-	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-	return coll.parent.zkWatcher.MonitorData(path)
+	collPath := coll.parent.solrRoot + "/collections/" + coll.name
+	statePath := collPath + "/state.json"
+	if err := coll.parent.zkWatcher.MonitorData(collPath); err != nil {
+		return err
+	}
+	if err := coll.parent.zkWatcher.MonitorData(statePath); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (coll *collection) setData(data string, version int32) {
-	coll.parent.logger.Printf("setData:updating the collection %s ", coll.name)
+func (coll *collection) setCollectionData(data string) *CollectionState {
+	coll.parent.logger.Printf("setCollectionData:updating the collection %s ", coll.name)
 	if data == "" {
-		coll.parent.logger.Printf("%s: no data", coll.name)
+		coll.parent.logger.Printf("setCollectionData: no data for %s", coll.name)
 	}
+
+	coll.mu.Lock()
+	defer coll.mu.Unlock()
+	configName, err := parseCollectionData([]byte(data))
+	if err != nil {
+		coll.parent.logger.Printf("Unable to parse collection[%s] collection data. Error %s", coll.name, err)
+	}
+
+	coll.configName = configName
+	if collectionState := coll.collectionState; collectionState != nil {
+		// shallow copy is okay, we are just setting the top field
+		copy := *collectionState
+		coll.carryOverConfigName(&copy)
+		coll.collectionState = &copy
+	}
+
+	return coll.collectionState
+}
+
+func (coll *collection) setStateData(data string, version int32) *CollectionState {
+	coll.parent.logger.Printf("setStateData:updating the collection %s ", coll.name)
+	if data == "" {
+		coll.parent.logger.Printf("setStateData: no data for %s", coll.name)
+	}
+
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
 	// we need to parse data here as we need to know PRS is enable for collection ot not; if enable then keep watch on coll/state.json children
 	newState, err := parseStateData(coll.name, []byte(data), coll.zkNodeVersion)
 	if err != nil {
-		coll.parent.logger.Printf("Unable to parse collection[%s] data. Error %s", coll.name, err)
+		coll.parent.logger.Printf("Unable to parse collection[%s] state data. Error %s", coll.name, err)
 	}
 
 	var oldState = coll.collectionState
 
 	coll.updateReplicaVersionAndState(newState, oldState)
+	coll.carryOverConfigName(newState)
 	coll.zkNodeVersion = version
 	coll.collectionState = newState
+
+	return coll.collectionState
 }
 
 func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState) {
@@ -563,6 +626,14 @@ func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, 
 			}
 		}
 	}
+}
+
+func (coll *collection) carryOverConfigName(newState *CollectionState) {
+	if newState == nil {
+		return
+	}
+	// Config name is managed separately, carry over as needed.
+	newState.ConfigName = coll.configName
 }
 
 func (coll *collection) startMonitoringReplicaStatus() {

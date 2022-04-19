@@ -44,7 +44,7 @@ func (l *ZkTestLogger) Printf(format string, args ...interface{}) {
 	defer l.mu.Unlock()
 	for _, arg := range args {
 		err, isError := arg.(error)
-		if isError && err != io.EOF {
+		if isError && err != io.EOF && err != zk.ErrConnectionClosed {
 			l.errors = append(l.errors, err)
 		}
 	}

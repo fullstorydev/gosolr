@@ -18,6 +18,7 @@
 package solrmonitor
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -133,7 +134,7 @@ func TestCollectionChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = zkCli.Create(sm.solrRoot+"/collections/c1", nil, 0, zk.WorldACL(zk.PermAll))
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1", []byte(`{"configName":"_FS5"}`), 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,14 +153,21 @@ func TestCollectionChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	shouldExist(t, sm, "c1")
-	collectionState, _ := sm.GetCollectionState("c1")
-	shard, _ := collectionState.Shards["shard_1"]
-	rep, _ := shard.Replicas["R1"]
-
-	if rep.Leader != "false" {
-		t.Fatalf("replica is not leader %+v", rep)
+	collectionAssertions := func(configName string) func(collectionState *CollectionState) error {
+		return func(collectionState *CollectionState) error {
+			if collectionState.ConfigName != configName {
+				return errors.New(fmt.Sprintf("wrong config name: got %s, expected %s", collectionState.ConfigName, configName))
+			}
+			shard, _ := collectionState.Shards["shard_1"]
+			rep, _ := shard.Replicas["R1"]
+			if rep.Leader != "false" {
+				return errors.New(fmt.Sprintf("replica is not leader %+v", rep))
+			}
+			return nil
+		}
 	}
+
+	shouldExist(t, sm, "c1", collectionAssertions("_FS5"))
 
 	if len(testutil.solrEventListener.collectionStates) != 1 || testutil.solrEventListener.collections != 1 {
 		t.Fatalf("Event listener didn't  not get event for collection  = %d, collectionstate = %d", testutil.solrEventListener.collections, len(testutil.solrEventListener.collectionStates))
@@ -182,7 +190,15 @@ func TestCollectionChanges(t *testing.T) {
 	}
 	defer sm2.Close()
 
-	shouldExist(t, sm2, "c1")
+	shouldExist(t, sm2, "c1", collectionAssertions("_FS5"))
+
+	// and finall if the config name changes (not common), we should get the updates
+	_, err = zkCli.Set(sm.solrRoot+"/collections/c1", []byte(`{"configName":"_FS6"}`), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shouldExist(t, sm2, "c1", collectionAssertions("_FS6"))
 }
 
 func TestPRSProtocol(t *testing.T) {
@@ -193,13 +209,13 @@ func TestPRSProtocol(t *testing.T) {
 
 	zkCli := testutil.conn
 	zkCli.Create(sm.solrRoot+"/collections", nil, 0, zk.WorldACL(zk.PermAll))
-	_, err := zkCli.Create(sm.solrRoot+"/collections/c1", nil, 0, zk.WorldACL(zk.PermAll))
+	_, err := zkCli.Create(sm.solrRoot+"/collections/c1", []byte(`{"configName":"_FS4"}`), 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	shouldNotExist(t, sm, "c1")
-	checkCollectionStateCallback(1, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 1, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
@@ -207,15 +223,22 @@ func TestPRSProtocol(t *testing.T) {
 	}
 
 	shouldNotExist(t, sm, "c1")
-	checkCollectionStateCallback(2, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 2, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"true\",	 \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\"}}}}}}"), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	shouldExist(t, sm, "c1")
-	checkCollectionStateCallback(3, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	collectionAssertions := func(collectionState *CollectionState) error {
+		if collectionState.ConfigName != "_FS4" {
+			return errors.New(fmt.Sprintf("wrong config name: got %s, expected %s", collectionState.ConfigName, "_FS4"))
+		}
+		return nil
+	}
+
+	shouldExist(t, sm, "c1", collectionAssertions)
+	checkCollectionStateCallback(t, 3, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	// 1. adding PRS for replica R1, version 1, state down
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:1:D", nil, 0, zk.WorldACL(zk.PermAll))
@@ -223,14 +246,14 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "down", "false", 1)
-	checkCollectionStateCallback(4, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 4, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 	// 2. adding PRS for replica R1, version 1 -same, state active => should ignore as same version
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:1:R", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "down", "false", 1)
-	checkCollectionStateCallback(5, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 5, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	// 3. adding PRS for replica R1, version 2, state active
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:2:A", nil, 0, zk.WorldACL(zk.PermAll))
@@ -238,7 +261,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "false", 2)
-	checkCollectionStateCallback(6, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 6, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	// 4. adding PRS for replica R1, version 3, state active and leader
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:3:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -246,7 +269,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "true", 3)
-	checkCollectionStateCallback(7, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 7, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	//5. split shard
 	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"true\",	 \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\"}}}, \"shard_1_0\":{\"replicas\":{\"R1_0\":{\"core\":\"core1\"}}}, \"shard_1_1\":{\"replicas\":{\"R1_1\":{\"core\":\"core1\"}}}}}}"), -1)
@@ -254,7 +277,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(5000 * time.Millisecond)
-	checkCollectionStateCallback(8, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 8, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	// 6. replica R1_0 should exist
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1_0:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -262,7 +285,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1_0", "R1_0", "active", "true", 1)
-	checkCollectionStateCallback(9, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 9, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	// 7. replica R1_1 should exist
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1_1:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -270,17 +293,19 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1_1", "R1_1", "active", "true", 1)
-	checkCollectionStateCallback(10, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 10, testutil.solrEventListener.collStateEvents+testutil.solrEventListener.collReplicaChangeEvents)
 
 	if testutil.solrEventListener.collStateEvents != 4 || testutil.solrEventListener.collections != 1 {
 		t.Fatalf("Event listener didn't  not get event for collection  = %d, collectionstateEvents = %d", testutil.solrEventListener.collections, testutil.solrEventListener.collStateEvents)
 	}
+
+	// and after all of the updates, should still exist with same config name
+	shouldExist(t, sm, "c1", collectionAssertions)
 }
 
-func checkCollectionStateCallback(expected int, found int) {
+func checkCollectionStateCallback(t *testing.T, expected int, found int) {
 	if expected != found {
-		msg := fmt.Sprintf("listener event is %d, expected %d ", found, expected)
-		panic(msg)
+		t.Fatalf("listener event is %d, expected %d ", found, expected)
 	}
 }
 
