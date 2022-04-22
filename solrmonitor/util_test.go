@@ -26,9 +26,10 @@ func shouldBecomeEq(t *testing.T, expected int32, actualFunc func() int32) {
 	t.Errorf("expected %d, got: %d", expected, actual)
 }
 
-func shouldExist(t *testing.T, sm *SolrMonitor, name string) {
+func shouldExist(t *testing.T, sm *SolrMonitor, name string, assert func(collectionState *CollectionState) error) {
 	t.Helper()
 
+	var assertErr error
 	for end := time.Now().Add(checkTimeout); time.Now().Before(end); {
 		collectionState, err := sm.GetCollectionState(name)
 		if err != nil {
@@ -46,11 +47,14 @@ func shouldExist(t *testing.T, sm *SolrMonitor, name string) {
 			if val == nil || !ok {
 				t.Errorf("expected %s to exist in state map, but it does not", name)
 			}
-			return // success
+			assertErr = assert(val)
+			if assertErr == nil {
+				return // success
+			}
 		}
 		time.Sleep(checkInterval)
 	}
-	t.Fatalf("expected %s to exist, but it does not", name)
+	t.Fatalf("expected %s to exist / match assertions, but it does not, assert err: %s", name, assertErr)
 }
 
 func prsShouldExist(t *testing.T, sm *SolrMonitor, name string, shard string, replica string, rstate string, leader string, version int32) {
