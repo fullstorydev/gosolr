@@ -312,33 +312,34 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 
 func (c *SolrMonitor) dataChanged(path string, data string, version int32) error {
 	collectionsPrefix := c.solrRoot + "/collections/"
-	if strings.HasPrefix(path, collectionsPrefix) {
-		// we will always need the collection
-		coll := c.getCollFromPath(path)
-		if strings.HasSuffix(path, "/state.json") {
-			// common state.json change
-			if coll != nil {
-				state := coll.setStateData(data, version)
-				c.callSolrListener(coll.name, state)
-				if coll.isPRSEnabled() {
-					coll.startMonitoringReplicaStatus()
-				}
-			}
-			return nil
-		} else if trimmed := strings.TrimPrefix(path, collectionsPrefix); !strings.Contains(trimmed, "/") {
-			// less common (usually just initialization) collection change
-			if coll != nil && coll.name == trimmed {
-				state := coll.setCollectionData(data)
-				if state != nil {
-					// for collection data, we don't hit the callback until the collection state is available as well
-					// on delete, the standard state.json flow will handle passing back the nil state once cleared
-					c.callSolrListener(coll.name, state)
-				}
-			}
-			return nil
+	if !strings.HasPrefix(path, collectionsPrefix) {
+		// Expecting a collection in the /collections/ folder
+		return fmt.Errorf("unknown dataChanged: %s", path)
+	}
+
+	coll := c.getCollFromPath(path)
+	if coll == nil {
+		// Always require a collection!
+		return fmt.Errorf("unknown dataChanged: %s", path)
+	}
+
+	if strings.HasSuffix(path, "/state.json") {
+		// common state.json change
+		state := coll.setStateData(data, version)
+		c.callSolrListener(coll.name, state)
+		if coll.isPRSEnabled() {
+			coll.startMonitoringReplicaStatus()
+		}
+	} else {
+		// less common (usually just initialization) collection change
+		state := coll.setCollectionData(data)
+		if state != nil {
+			// for collection data, we don't hit the callback until the collection state is available as well
+			// on delete, the standard state.json flow will handle passing back the nil state once cleared
+			c.callSolrListener(coll.name, state)
 		}
 	}
-	return fmt.Errorf("unknown dataChanged: %s", path)
+	return nil
 }
 
 func (c *SolrMonitor) callSolrListener(name string, state *CollectionState) {
