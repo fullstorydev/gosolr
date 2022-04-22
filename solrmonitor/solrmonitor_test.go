@@ -192,13 +192,22 @@ func TestCollectionChanges(t *testing.T) {
 
 	shouldExist(t, sm2, "c1", collectionAssertions("_FS5"))
 
-	// and finall if the config name changes (not common), we should get the updates
+	// if the config name changes (not common), we should get the updates
 	_, err = zkCli.Set(sm.solrRoot+"/collections/c1", []byte(`{"configName":"_FS6"}`), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	shouldExist(t, sm2, "c1", collectionAssertions("_FS6"))
+
+	err = smutil.DeleteRecursive(zkCli, sm.solrRoot+"/collections/c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// which should propagate to the sm instances
+	shouldNotExist(t, sm, "c1")
+	shouldNotExist(t, sm2, "c1")
 }
 
 func TestPRSProtocol(t *testing.T) {
