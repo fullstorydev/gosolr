@@ -44,7 +44,7 @@ func (r *OpRecord) String() string {
 	case OpStatus:
 		return fmt.Sprintf("status: %s", r.Error)
 	case OpMoveShard:
-		return fmt.Sprintf("move %s_%s to %s", r.Collection, r.Shard, r.DstNode)
+		return fmt.Sprintf("move %s_%s from %s to %s", r.Collection, r.Shard, r.SrcNode, r.DstNode)
 	case OpSplitShard:
 		return fmt.Sprintf("split %s_%s", r.Collection, r.Shard)
 	default:
