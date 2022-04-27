@@ -44,7 +44,7 @@ type ZkStorage struct {
 var _ SolrManStorage = &ZkStorage{}
 
 func (s *ZkStorage) init() error {
-	for _, path := range []string{s.root, s.inProgressPath(), s.completedPath(), s.stationaryPath()} {
+	for _, path := range []string{s.root, s.inProgressPath(), s.completedPath(), s.stationaryPath(), s.disabledPath()} {
 		_, err := s.conn.Create(path, nil, 0, zk.WorldACL(zk.PermAll))
 		if err != nil && err != zk.ErrNodeExists {
 			return smutil.Cherrf(err, "could not create %s in ZK", path)
