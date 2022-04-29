@@ -32,6 +32,7 @@ type OpRecord struct {
 	Operation  string // one of the Op* constants
 	Collection string
 	Shard      string
+	Replica    string // replica name (i.e. core_node09)
 	SrcNode    string // instance name of source node (in the case of a split, this node has the parent)
 	DstNode    string // instance name of destination node
 	Requestor  string // Who requested the operation (either a user, or "solrman" if automation)
@@ -44,7 +45,11 @@ func (r *OpRecord) String() string {
 	case OpStatus:
 		return fmt.Sprintf("status: %s", r.Error)
 	case OpMoveShard:
-		return fmt.Sprintf("move %s_%s to %s", r.Collection, r.Shard, r.DstNode)
+		var replica string
+		if r.Replica != "" {
+			replica = "_" + r.Replica
+		}
+		return fmt.Sprintf("move %s_%s%s from %s to %s", r.Collection, r.Shard, replica, r.SrcNode, r.DstNode)
 	case OpSplitShard:
 		return fmt.Sprintf("split %s_%s", r.Collection, r.Shard)
 	default:
