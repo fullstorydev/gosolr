@@ -320,7 +320,7 @@ func (s *ZkStorage) GetSplitsDisabledTime() time.Time {
 	}
 
 	if exists {
-		// the Ctime is in ms since epoch, so convert to seconds before returning
+		// the Ctime is in ms since epoch, so convert before returning
 		return time.Unix(stat.Ctime/1000, 0)
 	}
 
@@ -392,7 +392,7 @@ func (s *ZkStorage) GetMovesDisabledTime() time.Time {
 	}
 
 	if exists {
-		// the Ctime is in ms since epoch, so convert to seconds before returning
+		// the Ctime is in ms since epoch, so convert before returning
 		return time.Unix(stat.Ctime/1000, 0)
 	}
 
