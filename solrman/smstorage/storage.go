@@ -50,14 +50,16 @@ type SolrManStorage interface {
 	RemoveDisabledReason(string) error              // remove the disabled status associated with the "requestor" param.
 	GetDisabledTime() time.Time                     // ms since the oldest disabled node was created
 
-	IsSplitsDisabled() bool       // if true, don't do splits
-	SetSplitsDisabled(bool) error // disable splits
+	IsSplitsDisabled() bool           // if true, don't do splits
+	SetSplitsDisabled(bool) error     // disable splits
+	GetSplitsDisabledTime() time.Time // ms since splits disabled
 
 	AreTripsDisabled() bool
 	SetTripsDisabled(bool) error
 
-	IsMovesDisabled() bool       // if true, don't do moves
-	SetMovesDisabled(bool) error // disable moves
+	IsMovesDisabled() bool           // if true, don't do moves
+	SetMovesDisabled(bool) error     // disable moves
+	GetMovesDisabledTime() time.Time // ms since moves disabled
 
 	IsStabbingEnabled() bool       // if true, Solrman will automatically restart problematic nodes
 	SetStabbingEnabled(bool) error // enable auutomatic node restarts
