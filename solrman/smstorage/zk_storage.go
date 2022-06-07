@@ -311,6 +311,22 @@ func (s *ZkStorage) SetSplitsDisabled(disabled bool) error {
 	return nil
 }
 
+func (s *ZkStorage) GetSplitsDisabledTime() time.Time {
+	path := s.disableSplitsPath()
+	exists, stat, err := s.conn.Exists(path)
+	if err != nil {
+		s.logger.Errorf("could not check the splits disabled at %s in ZK: %s", path, err)
+		return time.Time{}
+	}
+
+	if exists {
+		// the Ctime is in ms since epoch, so convert before returning
+		return time.Unix(stat.Ctime/1000, 0)
+	}
+
+	return time.Time{}
+}
+
 func (s *ZkStorage) AreTripsDisabled() bool {
 	path := s.disableTripsPath()
 	exists, _, err := s.conn.Exists(path)
@@ -365,6 +381,22 @@ func (s *ZkStorage) SetMovesDisabled(disabled bool) error {
 		}
 	}
 	return nil
+}
+
+func (s *ZkStorage) GetMovesDisabledTime() time.Time {
+	path := s.disableMovesPath()
+	exists, stat, err := s.conn.Exists(path)
+	if err != nil {
+		s.logger.Errorf("could not check the moves disabled at %s in ZK: %s", path, err)
+		return time.Time{}
+	}
+
+	if exists {
+		// the Ctime is in ms since epoch, so convert before returning
+		return time.Unix(stat.Ctime/1000, 0)
+	}
+
+	return time.Time{}
 }
 
 func (s *ZkStorage) IsStabbingEnabled() bool {

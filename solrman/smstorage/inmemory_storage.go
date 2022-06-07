@@ -151,6 +151,10 @@ func (s *InMemoryStorage) SetSplitsDisabled(disabled bool) error {
 	return nil
 }
 
+func (s *InMemoryStorage) GetSplitsDisabledTime() time.Time {
+	return time.Time{}
+}
+
 func (s *InMemoryStorage) AreTripsDisabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -177,6 +181,10 @@ func (s *InMemoryStorage) SetMovesDisabled(disabled bool) error {
 
 	s.movesDisabled = disabled
 	return nil
+}
+
+func (s *InMemoryStorage) GetMovesDisabledTime() time.Time {
+	return time.Time{}
 }
 
 func (s *InMemoryStorage) IsStabbingEnabled() bool {
