@@ -270,7 +270,7 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) (map
 
 		rmap[prs.Name] = prs
 	}
-	c.logger.Printf("updateCollectionState: updating prs state %s", rmap)
+	c.logger.Printf("updateCollectionState on collection %s: updating prs state %s", coll, rmap)
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
 	//update the collection state based on new PRS (per replica state)
