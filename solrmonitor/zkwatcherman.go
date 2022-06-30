@@ -214,11 +214,11 @@ func (m *ZkWatcherMan) MonitorChildren(path string) error {
 
 func (m *ZkWatcherMan) fetchChildren(path string) (zkErr, cbErr error) {
 	if children, _, err := getChildrenAndWatch(m.zkCli, path); err != nil {
+		m.logger.Printf("ZkWatcherMan %s: error getting children: %s", path, err)
 		if err == zk.ErrClosing {
 			return nil, nil
 		}
 		// We failed to set a watch; add a task for the recovery thread to keep trying
-		m.logger.Printf("ZkWatcherMan %s: error getting children: %s", path, err)
 		m.enqueueDeferredTask(deferredChildrenTask{path: path})
 		return err, nil
 	} else {
@@ -242,11 +242,11 @@ func (m *ZkWatcherMan) MonitorData(path string) error {
 
 func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
 	if data, stat, _, err := getDataAndWatch(m.zkCli, path); err != nil {
+		m.logger.Printf("ZkWatcherMan %s: error getting data: %s", path, err)
 		if err == zk.ErrClosing {
 			return nil, nil
 		}
 		// We failed to set a watch; add a task for the recovery thread to keep trying
-		m.logger.Printf("ZkWatcherMan %s: error getting data: %s", path, err)
 		m.enqueueDeferredTask(deferredDataTask{path: path})
 		return err, nil
 	} else {
