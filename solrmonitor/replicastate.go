@@ -23,10 +23,11 @@ type ReplicaState struct {
 	State    string `json:"state"`     // e.g. "active", "inactive", "down", "recovering"
 	Leader   string `json:"leader"`    // e.g. "true" or "false" (yes, these are strings, not bools)
 	Version  int32  `json:"version"`   // e.g. "1" version of replica state
+	Type     string `json:"type"`      // e.g. "NRT", "PULL"
 }
 
 func (r *ReplicaState) String() string {
-	return fmt.Sprintf("\nReplicaState{Core:%s, BaseUrl:%s, NodeName=%s, State=%s, Leader=%s, Version=%d}\n", r.Core, r.BaseUrl, r.NodeName, r.State, r.Leader, r.Version)
+	return fmt.Sprintf("\nReplicaState{Core:%s, BaseUrl:%s, NodeName=%s, State=%s, Leader=%s, Version=%d, Type=%s}\n", r.Core, r.BaseUrl, r.NodeName, r.State, r.Leader, r.Version, r.Type)
 }
 
 func (r ReplicaState) IsActive() bool {
@@ -35,4 +36,12 @@ func (r ReplicaState) IsActive() bool {
 
 func (r ReplicaState) IsLeader() bool {
 	return r.Leader == "true"
+}
+
+func (r ReplicaState) IsNRT() bool {
+	return r.Type == "NRT"
+}
+
+func (r ReplicaState) IsPull() bool {
+	return r.Type == "PULL"
 }
