@@ -21,7 +21,7 @@ type SolrNodeStatus struct {
 	Hostname string                     // the node's hostname, as determined by gethostbyaddr
 	NodeName string                     // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
 	Cores    map[string]*SolrCoreStatus // keys are core names
-	zone     string                     // cloud zone where host exists
+	Zone     string                     // cloud zone where host exists
 }
 
 type SolrCoreStatus struct {
