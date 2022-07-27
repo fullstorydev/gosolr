@@ -36,4 +36,5 @@ type SolrCoreStatus struct {
 	HasStats     bool   // if false, core status could not be queried and following attributes are expected to be -1
 	NumDocs      int64  // total number of indexed documents
 	IndexSize    int64  // in bytes
+	Type         string // e.g. "NRT", "PULL", "TLOG"
 }
