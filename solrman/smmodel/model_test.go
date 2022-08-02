@@ -150,7 +150,7 @@ func createTestModel(data string) *Model {
 				m.AddCollection(collection)
 			}
 
-			core := &Core{Name: name, Collection: collName, Shard: shardName, Size: toBytes(size)}
+			core := &Core{Name: name, Collection: collName, Shard: shardName, Size: toBytes(size), Type: "NRT"}
 			collection.Add(core)
 			currentNode.Add(core)
 			m.Add(core)
