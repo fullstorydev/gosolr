@@ -23,6 +23,7 @@ type Core struct {
 	Shard      string `json:"shard"`
 	Size       int64  `json:"size"` // in bytes
 	NumDocs    int64  `json:"num_docs"`
+	Type       string `json:"replicatype"` // e.g. "NRT", "PULL", "TLOG"
 
 	id           coreId
 	collectionId collectionId // the collection i belong to

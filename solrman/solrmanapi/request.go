@@ -28,6 +28,7 @@ type MoveShardRequest struct {
 	Requestor  string // Username of who requested the operation ("solrman" if through automation)
 	NumDocs    int64  // The number of docs in this shard
 	IndexSize  int64  // The size of the shard in bytes
+	Type       string // e.g. "NRT", "PULL", "TLOG"
 }
 
 type SplitShardRequest struct {
