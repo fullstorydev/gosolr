@@ -24,10 +24,11 @@ import (
 
 	"github.com/fullstorydev/gosolr/smutil"
 	"github.com/fullstorydev/gosolr/solrman/solrmanapi"
+	"github.com/fullstorydev/gosolr/solrmonitor"
 	"github.com/fullstorydev/zk"
 )
 
-func NewZkStorage(conn *zk.Conn, root string, logger smutil.Logger) (*ZkStorage, error) {
+func NewZkStorage(conn *solrmonitor.ZkCli, root string, logger smutil.Logger) (*ZkStorage, error) {
 	ret := &ZkStorage{conn: conn, root: root, logger: logger}
 	if err := ret.init(); err != nil {
 		return nil, err
@@ -36,7 +37,7 @@ func NewZkStorage(conn *zk.Conn, root string, logger smutil.Logger) (*ZkStorage,
 }
 
 type ZkStorage struct {
-	conn   *zk.Conn
+	conn   *solrmonitor.ZkCli
 	root   string
 	logger smutil.Logger
 }
