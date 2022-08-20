@@ -20,7 +20,7 @@ type SolrmanStatusResponse struct {
 	CompletedSolrOps  []OpRecord
 }
 
-type MoveReplicaRequest struct {
+type MoveShardRequest struct {
 	Collection string
 	Shard      string
 	Replica    string
