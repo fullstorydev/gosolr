@@ -23,6 +23,34 @@ func newMockZkClient() ZkCli {
 type mockZkClient struct {
 }
 
+func (m mockZkClient) Children(path string) ([]string, *zk.Stat, error) {
+	panic("Not implemented")
+}
+
+func (m mockZkClient) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
+	panic("Not implemented")
+}
+
+func (m mockZkClient) Delete(path string, version int32) error {
+	panic("Not implemented")
+}
+
+func (m mockZkClient) Exists(path string) (bool, *zk.Stat, error) {
+	panic("Not implemented")
+}
+
+func (m mockZkClient) SessionID() int64 {
+	panic("Not implemented")
+}
+
+func (m mockZkClient) Set(path string, contents []byte, version int32) (*zk.Stat, error) {
+	panic("Not implemented")
+}
+
+func (m mockZkClient) Sync(path string) (string, error) {
+	panic("Not implemented")
+}
+
 func (m mockZkClient) ChildrenW(path string) ([]string, *zk.Stat, <-chan zk.Event, error) {
 	panic("Not implemented")
 }

@@ -15,6 +15,7 @@
 package smutil
 
 import (
+	"github.com/fullstorydev/gosolr/solrmonitor"
 	"time"
 
 	"github.com/fullstorydev/zk"
@@ -28,14 +29,14 @@ import (
 // The caller must supply an implementation for `onLostMutex`.  If this ZK session is lost, or the underlying ZK
 // mutex node is deleted by an outside party, this implementation will call `onLostMutex`.  The caller must
 // release any resources guarded by the mutex.
-func AcquireAndMonitorZkMutex(logger Logger, conn *zk.Conn, path string, onLostMutex func()) (func(), error) {
+func AcquireAndMonitorZkMutex(logger Logger, conn solrmonitor.ZkCli, path string, onLostMutex func()) (func(), error) {
 	if err := acquireZkMutex(logger, conn, path); err != nil {
 		return func() {}, err
 	}
 	return monitorZkMutex(logger, conn, path, onLostMutex), nil
 }
 
-func acquireZkMutex(logger Logger, conn *zk.Conn, path string) error {
+func acquireZkMutex(logger Logger, conn solrmonitor.ZkCli, path string) error {
 	// Wait for up to a minute trying to acquire.
 	timeout := time.After(1 * time.Minute)
 	for {
@@ -82,7 +83,7 @@ func acquireZkMutex(logger Logger, conn *zk.Conn, path string) error {
 	}
 }
 
-func monitorZkMutex(logger Logger, conn *zk.Conn, path string, onLostMutex func()) func() {
+func monitorZkMutex(logger Logger, conn solrmonitor.ZkCli, path string, onLostMutex func()) func() {
 	shouldExit := make(chan struct{})
 	didExit := make(chan struct{})
 	go func() {
