@@ -1,5 +1,7 @@
 # solrman
 
+Test
+
 [![Solar Man by RazorsEdge701 on DeviantArt](solrman.jpg)](http://razorsedge701.deviantart.com/art/Solar-Man-52943088)
 
 Automatically balances a Solr cloud cluster.  Attempts to balance collections, total document count, and total disk size
