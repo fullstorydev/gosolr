@@ -23,7 +23,7 @@ type SolrmanStatusResponse struct {
 type MoveShardRequest struct {
 	Collection string
 	Shard      string
-	Replica    string
+	Replica    string // Name of the replica to be moved
 	SrcNode    string // Solr node name of the source node (e.g. "1.1.1.1:8983_solr"
 	DstNode    string // Solr node name of the destination node (e.g. "1.1.1.1:8983_solr"
 	Requestor  string // Username of who requested the operation ("solrman" if through automation)
