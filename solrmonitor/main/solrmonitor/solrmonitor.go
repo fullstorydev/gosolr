@@ -202,6 +202,52 @@ func (s *sexPantherZkCli) isFlaky() bool {
 	return atomic.LoadInt32(&s.flaky) != 0
 }
 
+func (s *sexPantherZkCli) Children(path string) ([]string, *zk.Stat, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return nil, nil, errors.New("flaky error")
+	}
+	return s.delegate.Children(path)
+}
+
+func (s *sexPantherZkCli) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return "", errors.New("flaky error")
+	}
+	return s.delegate.Create(path, data, flags, acl)
+}
+
+func (s *sexPantherZkCli) Delete(path string, version int32) error {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return errors.New("flaky error")
+	}
+	return s.delegate.Delete(path, version)
+}
+
+func (s *sexPantherZkCli) Exists(path string) (bool, *zk.Stat, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return false, nil, errors.New("flaky error")
+	}
+	return s.delegate.Exists(path)
+}
+
+func (s *sexPantherZkCli) SessionID() int64 {
+	return s.delegate.SessionID()
+}
+
+func (s *sexPantherZkCli) Set(path string, contents []byte, version int32) (*zk.Stat, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return nil, errors.New("flaky error")
+	}
+	return s.delegate.Set(path, contents, version)
+}
+
+func (s *sexPantherZkCli) Sync(path string) (string, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return "", errors.New("flaky error")
+	}
+	return s.delegate.Sync(path)
+}
+
 func (s *sexPantherZkCli) ChildrenW(path string) ([]string, *zk.Stat, <-chan zk.Event, error) {
 	if s.isFlaky() && s.rnd.Float32() > flakeChance {
 		return nil, nil, nil, errors.New("flaky error")
