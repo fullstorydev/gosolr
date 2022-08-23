@@ -28,7 +28,7 @@ import (
 	"github.com/fullstorydev/zk"
 )
 
-func NewZkStorage(conn *solrmonitor.ZkCli, root string, logger smutil.Logger) (*ZkStorage, error) {
+func NewZkStorage(conn solrmonitor.ZkCli, root string, logger smutil.Logger) (*ZkStorage, error) {
 	ret := &ZkStorage{conn: conn, root: root, logger: logger}
 	if err := ret.init(); err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func NewZkStorage(conn *solrmonitor.ZkCli, root string, logger smutil.Logger) (*
 }
 
 type ZkStorage struct {
-	conn   *solrmonitor.ZkCli
+	conn   solrmonitor.ZkCli
 	root   string
 	logger smutil.Logger
 }
