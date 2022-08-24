@@ -24,7 +24,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -69,12 +68,12 @@ func run(logger *log.Logger) error {
 	}
 	zkCli := solrmonitor.ZkCli(zooClient)
 
-	var flakyZk *sexPantherZkCli
+	var flakyZk *solrmonitor.SexPantherZkCli
 	if *flakyFlag {
-		flakyZk = &sexPantherZkCli{
-			delegate: zooClient,
-			rnd:      rand.New(rand.NewSource(0)),
-			flaky:    0, // during startup
+		flakyZk = &solrmonitor.SexPantherZkCli{
+			Delegate: zooClient,
+			Rnd:      rand.New(rand.NewSource(0)),
+			Flaky:    0, // during startup
 		}
 		zkCli = flakyZk
 	}
@@ -87,7 +86,7 @@ func run(logger *log.Logger) error {
 
 	if *flakyFlag {
 		// Now that we're up and running, make it flaky
-		flakyZk.setFlaky(true)
+		flakyZk.SetFlaky(true)
 	}
 
 	logger.Println("Waiting for interrupt...")
@@ -175,111 +174,4 @@ var _ zk.Logger = &solrmonitorLogger{}
 
 func (l *solrmonitorLogger) Printf(format string, args ...interface{}) {
 	l.logger.Printf("solrmonitor: "+format, args...)
-}
-
-// TODO: make an integration test using this idea.
-
-// 60% of the time, it works every time
-const flakeChance = 0.60
-
-type sexPantherZkCli struct {
-	delegate solrmonitor.ZkCli
-	rnd      *rand.Rand
-	flaky    int32
-}
-
-var _ solrmonitor.ZkCli = &sexPantherZkCli{}
-
-func (s *sexPantherZkCli) setFlaky(flaky bool) {
-	if flaky {
-		atomic.StoreInt32(&s.flaky, 1)
-	} else {
-		atomic.StoreInt32(&s.flaky, 0)
-	}
-}
-
-func (s *sexPantherZkCli) isFlaky() bool {
-	return atomic.LoadInt32(&s.flaky) != 0
-}
-
-func (s *sexPantherZkCli) Children(path string) ([]string, *zk.Stat, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return nil, nil, errors.New("flaky error")
-	}
-	return s.delegate.Children(path)
-}
-
-func (s *sexPantherZkCli) Create(path string, data []byte, flags int32, acl []zk.ACL) (string, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return "", errors.New("flaky error")
-	}
-	return s.delegate.Create(path, data, flags, acl)
-}
-
-func (s *sexPantherZkCli) Delete(path string, version int32) error {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return errors.New("flaky error")
-	}
-	return s.delegate.Delete(path, version)
-}
-
-func (s *sexPantherZkCli) Exists(path string) (bool, *zk.Stat, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return false, nil, errors.New("flaky error")
-	}
-	return s.delegate.Exists(path)
-}
-
-func (s *sexPantherZkCli) SessionID() int64 {
-	return s.delegate.SessionID()
-}
-
-func (s *sexPantherZkCli) Set(path string, contents []byte, version int32) (*zk.Stat, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return nil, errors.New("flaky error")
-	}
-	return s.delegate.Set(path, contents, version)
-}
-
-func (s *sexPantherZkCli) Sync(path string) (string, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return "", errors.New("flaky error")
-	}
-	return s.delegate.Sync(path)
-}
-
-func (s *sexPantherZkCli) ChildrenW(path string) ([]string, *zk.Stat, <-chan zk.Event, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return nil, nil, nil, errors.New("flaky error")
-	}
-	return s.delegate.ChildrenW(path)
-}
-
-func (s *sexPantherZkCli) Get(path string) ([]byte, *zk.Stat, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return nil, nil, errors.New("flaky error")
-	}
-	return s.delegate.Get(path)
-}
-
-func (s *sexPantherZkCli) GetW(path string) ([]byte, *zk.Stat, <-chan zk.Event, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return nil, nil, nil, errors.New("flaky error")
-	}
-	return s.delegate.GetW(path)
-}
-
-func (s *sexPantherZkCli) ExistsW(path string) (bool, *zk.Stat, <-chan zk.Event, error) {
-	if s.isFlaky() && s.rnd.Float32() > flakeChance {
-		return false, nil, nil, errors.New("flaky error")
-	}
-	return s.delegate.ExistsW(path)
-}
-
-func (s *sexPantherZkCli) State() zk.State {
-	return s.delegate.State()
-}
-
-func (s *sexPantherZkCli) Close() {
-	s.delegate.Close()
 }
