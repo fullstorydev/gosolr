@@ -209,6 +209,7 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	}
 }
 
+
 type zkRoleState struct {
 	Overseer []string `json:"overseer"`
 }
@@ -437,6 +438,9 @@ func (c *SolrMonitor) start() error {
 		return err
 	}
 	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
+		return err
+	}
+	if err := c.zkWatcher.MonitorData(rolesPath); err != nil {
 		return err
 	}
 	if err := c.zkWatcher.MonitorData(rolesPath); err != nil {
