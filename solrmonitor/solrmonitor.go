@@ -210,7 +210,7 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 }
 
 type zkRoleState struct {
-	Overseer []string "json:overseer"
+	Overseer []string `json:"overseer"`
 }
 
 func (c *SolrMonitor) rolesChanged(data string) error {
