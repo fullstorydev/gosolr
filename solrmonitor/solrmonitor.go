@@ -214,13 +214,18 @@ type zkRoleState struct {
 }
 
 func (c *SolrMonitor) rolesChanged(data string) error {
+	if len(data) == 0 {
+		return nil
+	}
 	var roles *zkRoleState
 	err := json.Unmarshal([]byte(data), &roles)
 	if err != nil {
+		c.logger.Printf("error when parsing JSON for roles: %s", err.Error())
 		return err
 	}
 	err = c.updateOverseerNodes(roles.Overseer)
 	if err != nil {
+		c.logger.Printf("error when updating overseer nodes: %s", err.Error())
 		return err
 	}
 	return nil
