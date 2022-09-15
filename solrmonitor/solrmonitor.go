@@ -30,6 +30,7 @@ const (
 	collectionsPath    = "/collections"
 	liveNodesPath      = "/live_nodes"
 	liveQueryNodesPath = "/live_query_nodes"
+	rolesPath          = "/roles.json"
 )
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
@@ -43,6 +44,7 @@ type SolrMonitor struct {
 	collections       map[string]*collection // map of all currently-known collections
 	liveNodes         []string               // current set of live_nodes
 	queryNodes        []string               // current set of live_query_nodes
+	overseerNodes     []string               // current set of overseer nodes (from roles.json)
 	solrEventListener SolrEventListener      // to listen the solr cluster state
 }
 
@@ -180,6 +182,16 @@ func (c *SolrMonitor) GetLiveNodes() ([]string, error) {
 	return append([]string{}, c.liveNodes...), nil
 }
 
+func (c *SolrMonitor) GetOverseerNodes() ([]string, error) {
+	if c.zkCli.State() != zk.StateHasSession {
+		return nil, errors.New("not currently connected to zk")
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]string{}, c.overseerNodes...), nil
+}
+
 func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	switch path {
 	case c.solrRoot + collectionsPath:
@@ -196,6 +208,31 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 		return c.updateCollection(path, children)
 	}
 }
+
+type zkRoleState struct {
+	Overseer []string `json:"overseer"`
+}
+
+func (c *SolrMonitor) rolesChanged(data string) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	var roles *zkRoleState
+	err := json.Unmarshal([]byte(data), &roles)
+	if err != nil {
+		c.logger.Printf("error when parsing JSON for roles: %s", err.Error())
+		return err
+	}
+
+	err = c.updateOverseerNodes(roles.Overseer)
+	if err != nil {
+		c.logger.Printf("error when updating overseer nodes: %s", err.Error())
+		return err
+	}
+	return nil
+}
+
 func (c *SolrMonitor) updateCollection(path string, children []string) error {
 	rs, err := c.updateCollectionState(path, children)
 
@@ -311,6 +348,10 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 }
 
 func (c *SolrMonitor) dataChanged(path string, data string, version int32) error {
+	if strings.HasSuffix(path, rolesPath) {
+		return c.rolesChanged(data)
+	}
+
 	collectionsPrefix := c.solrRoot + "/collections/"
 	if !strings.HasPrefix(path, collectionsPrefix) {
 		// Expecting a collection in the /collections/ folder
@@ -386,6 +427,7 @@ func (c *SolrMonitor) start() error {
 	collectionsPath := c.solrRoot + collectionsPath
 	liveNodesPath := c.solrRoot + liveNodesPath
 	queryNodesPath := c.solrRoot + liveQueryNodesPath
+	rolesPath := c.solrRoot + rolesPath
 	c.zkWatcher.Start(c.zkCli, callbacks{c})
 
 	if err := c.zkWatcher.MonitorChildren(liveNodesPath); err != nil {
@@ -395,6 +437,9 @@ func (c *SolrMonitor) start() error {
 		return err
 	}
 	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
+		return err
+	}
+	if err := c.zkWatcher.MonitorData(rolesPath); err != nil {
 		return err
 	}
 	return nil
@@ -498,6 +543,15 @@ func (c *SolrMonitor) updateLiveQueryNodes(queryNodes []string) error {
 	if c.solrEventListener != nil {
 		c.solrEventListener.SolrQueryNodesChanged(c.queryNodes)
 	}
+	return nil
+}
+
+func (c *SolrMonitor) updateOverseerNodes(overseerNodes []string) error {
+	c.logger.Printf("%s (%d): %s", rolesPath, len(overseerNodes), overseerNodes)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.overseerNodes = overseerNodes
 	return nil
 }
 
