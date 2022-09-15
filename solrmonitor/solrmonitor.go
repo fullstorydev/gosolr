@@ -217,12 +217,14 @@ func (c *SolrMonitor) rolesChanged(data string) error {
 	if len(data) == 0 {
 		return nil
 	}
+
 	var roles *zkRoleState
 	err := json.Unmarshal([]byte(data), &roles)
 	if err != nil {
 		c.logger.Printf("error when parsing JSON for roles: %s", err.Error())
 		return err
 	}
+
 	err = c.updateOverseerNodes(roles.Overseer)
 	if err != nil {
 		c.logger.Printf("error when updating overseer nodes: %s", err.Error())
@@ -548,6 +550,7 @@ func (c *SolrMonitor) updateOverseerNodes(overseerNodes []string) error {
 	c.logger.Printf("%s (%d): %s", rolesPath, len(overseerNodes), overseerNodes)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.overseerNodes = overseerNodes
 	return nil
 }
