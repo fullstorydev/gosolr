@@ -58,7 +58,7 @@ func (r *OpRecord) String() string {
 }
 
 func (r *OpRecord) Key() string {
-	return fmt.Sprintf("SolrOp:%s:%s", r.Collection, r.Shard)
+	return fmt.Sprintf("SolrOp:%s:%s:%s", r.Collection, r.Shard, r.Replica)
 }
 
 type ByStartedRecently []OpRecord
