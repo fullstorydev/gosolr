@@ -43,25 +43,25 @@ func testStorage_InProgressOps(t *testing.T, s SolrManStorage) {
 	assertOps()
 
 	ops := []solrmanapi.OpRecord{
-		{Collection: "foo", Shard: "1", StartedMs: 1},
-		{Collection: "bar", Shard: "2", StartedMs: 2},
-		{Collection: "baz", Shard: "3", StartedMs: 3},
+		{Collection: "foo", Shard: "1", StartedMs: 1, Replica: "core1"},
+		{Collection: "bar", Shard: "2", StartedMs: 2, Replica: "core2"},
+		{Collection: "baz", Shard: "3", StartedMs: 3, Replica: "core3"},
 	}
 
 	s.AddInProgressOp(ops[0])
-	assertOps("SolrOp:foo:1")
+	assertOps("SolrOp:foo:1:core1")
 
 	s.AddInProgressOp(ops[2])
-	assertOps("SolrOp:baz:3", "SolrOp:foo:1")
+	assertOps("SolrOp:baz:3:core3", "SolrOp:foo:1:core1")
 
 	s.AddInProgressOp(ops[1])
-	assertOps("SolrOp:baz:3", "SolrOp:bar:2", "SolrOp:foo:1")
+	assertOps("SolrOp:baz:3:core3", "SolrOp:bar:2:core2", "SolrOp:foo:1:core1")
 
 	s.DelInProgressOp(ops[0])
-	assertOps("SolrOp:baz:3", "SolrOp:bar:2")
+	assertOps("SolrOp:baz:3:core3", "SolrOp:bar:2:core2")
 
 	s.DelInProgressOp(ops[2])
-	assertOps("SolrOp:bar:2")
+	assertOps("SolrOp:bar:2:core2")
 
 	s.DelInProgressOp(ops[1])
 	assertOps()
@@ -96,21 +96,21 @@ func testStorage_CompletedOps(t *testing.T, s SolrManStorage) {
 	}
 
 	s.AddCompletedOp(ops[0])
-	assertOps(99, "SolrOp:foo:1")
-	assertOps(1, "SolrOp:foo:1")
+	assertOps(99, "SolrOp:foo:1:")
+	assertOps(1, "SolrOp:foo:1:")
 	assertOps(0)
 
 	s.AddCompletedOp(ops[1])
-	assertOps(99, "SolrOp:bar:2", "SolrOp:foo:1")
-	assertOps(2, "SolrOp:bar:2", "SolrOp:foo:1")
-	assertOps(1, "SolrOp:bar:2")
+	assertOps(99, "SolrOp:bar:2:", "SolrOp:foo:1:")
+	assertOps(2, "SolrOp:bar:2:", "SolrOp:foo:1:")
+	assertOps(1, "SolrOp:bar:2:")
 	assertOps(0)
 
 	s.AddCompletedOp(ops[2])
-	assertOps(99, "SolrOp:baz:3", "SolrOp:bar:2", "SolrOp:foo:1")
-	assertOps(3, "SolrOp:baz:3", "SolrOp:bar:2", "SolrOp:foo:1")
-	assertOps(2, "SolrOp:baz:3", "SolrOp:bar:2")
-	assertOps(1, "SolrOp:baz:3")
+	assertOps(99, "SolrOp:baz:3:", "SolrOp:bar:2:", "SolrOp:foo:1:")
+	assertOps(3, "SolrOp:baz:3:", "SolrOp:bar:2:", "SolrOp:foo:1:")
+	assertOps(2, "SolrOp:baz:3:", "SolrOp:bar:2:")
+	assertOps(1, "SolrOp:baz:3:")
 	assertOps(0)
 
 	// Now add a bunch and make sure only NumStoredCompletedOps come back.
