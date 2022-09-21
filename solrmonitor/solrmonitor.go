@@ -31,6 +31,7 @@ const (
 	liveNodesPath      = "/live_nodes"
 	liveQueryNodesPath = "/live_query_nodes"
 	rolesPath          = "/roles.json"
+	overseerLeaderPath = "/overseer_elect/leader"
 )
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
@@ -45,6 +46,7 @@ type SolrMonitor struct {
 	liveNodes         []string               // current set of live_nodes
 	queryNodes        []string               // current set of live_query_nodes
 	overseerNodes     []string               // current set of overseer nodes (from roles.json)
+	overseerLeader    string                 // current overseer leader
 	solrEventListener SolrEventListener      // to listen the solr cluster state
 }
 
@@ -192,6 +194,16 @@ func (c *SolrMonitor) GetOverseerNodes() ([]string, error) {
 	return append([]string{}, c.overseerNodes...), nil
 }
 
+func (c *SolrMonitor) GetOverseerLeader() (string, error) {
+	if c.zkCli.State() != zk.StateHasSession {
+		return "", errors.New("not currently connected to zk")
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.overseerLeader, nil
+}
+
 func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	switch path {
 	case c.solrRoot + collectionsPath:
@@ -232,6 +244,43 @@ func (c *SolrMonitor) rolesChanged(data string) error {
 		return err
 	}
 	return nil
+}
+
+func (c *SolrMonitor) overseerLeaderChanged(data string) error {
+	leader, err := getOverseerLeaderFromJSON([]byte(data))
+	if err != nil {
+		return err
+	}
+	err = c.updateOverseerLeader(leader)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getOverseerLeaderFromJSON(leaderJSONString []byte) (string, error) {
+	if len(leaderJSONString) == 0 {
+		return "", nil
+	}
+
+	var leaderInfo map[string]interface{}
+	err := json.Unmarshal(leaderJSONString, &leaderInfo)
+	if err != nil {
+		return "", fmt.Errorf("failure parsing the json response for leader : %s", err.Error())
+	}
+
+	leaderId := leaderInfo["id"].(string)
+
+	leaderIdTokens := strings.Split(leaderId, "-")
+
+	// leader id should have 2 hyphens, hence 3 tokens in format of sessionId-coreNodeName-leaderSeq
+	// see https://github.com/fullstorydev/lucene-solr/blob/0cb904f1df2baa8ffa8c1b98f79304872940870c/solr/core/src/java/org/apache/solr/cloud/LeaderElector.java#L236
+	if len(leaderIdTokens) != 3 {
+		return "", fmt.Errorf("failure parsing the id of leader. Expect 3 tokens but found %s", leaderId)
+	}
+
+	// 2nd token is the NodeName of the leader
+	return leaderIdTokens[1], nil
 }
 
 func (c *SolrMonitor) updateCollection(path string, children []string) error {
@@ -351,6 +400,9 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 func (c *SolrMonitor) dataChanged(path string, data string, version int32) error {
 	if strings.HasSuffix(path, rolesPath) {
 		return c.rolesChanged(data)
+	}
+	if strings.HasSuffix(path, overseerLeaderPath) {
+		return c.overseerLeaderChanged(data)
 	}
 
 	collectionsPrefix := c.solrRoot + "/collections/"
@@ -556,6 +608,15 @@ func (c *SolrMonitor) updateOverseerNodes(overseerNodes []string) error {
 	defer c.mu.Unlock()
 
 	c.overseerNodes = overseerNodes
+	return nil
+}
+
+func (c *SolrMonitor) updateOverseerLeader(leader string) error {
+	c.logger.Printf("%s: %s", overseerLeaderPath, leader)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.overseerLeader = leader
 	return nil
 }
 
