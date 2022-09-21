@@ -221,7 +221,6 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	}
 }
 
-
 type zkRoleState struct {
 	Overseer []string `json:"overseer"`
 }
@@ -481,6 +480,7 @@ func (c *SolrMonitor) start() error {
 	liveNodesPath := c.solrRoot + liveNodesPath
 	queryNodesPath := c.solrRoot + liveQueryNodesPath
 	rolesPath := c.solrRoot + rolesPath
+	overseerLeaderPath := c.solrRoot + overseerLeaderPath
 	c.zkWatcher.Start(c.zkCli, callbacks{c})
 
 	if err := c.zkWatcher.MonitorChildren(liveNodesPath); err != nil {
@@ -495,7 +495,7 @@ func (c *SolrMonitor) start() error {
 	if err := c.zkWatcher.MonitorData(rolesPath); err != nil {
 		return err
 	}
-	if err := c.zkWatcher.MonitorData(rolesPath); err != nil {
+	if err := c.zkWatcher.MonitorData(overseerLeaderPath); err != nil {
 		return err
 	}
 	return nil
