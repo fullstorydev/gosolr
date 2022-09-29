@@ -412,18 +412,6 @@ func (c *SolrMonitor) getCollNameFromPath(path string) string {
 func (c *SolrMonitor) start() error {
 	// Synchronously check the initial calls, then setup event listening.
 
-	// Ensure no state format v1 collections exist.
-	globalClusterStatePath := c.solrRoot + "/clusterstate.json"
-	globalClusterState, _, err := c.zkCli.Get(globalClusterStatePath)
-	if err != nil {
-		c.logger.Printf("%s: error fetching zk node: %s", globalClusterStatePath, err)
-		return err
-	}
-	if len(globalClusterState) > 2 {
-		err := fmt.Errorf("%s: solrmonitor does not support state format v1; zk node should contain only '{}'", globalClusterStatePath)
-		c.logger.Printf("please use Solr's MIGRATESTATEFORMAT collections command: %s", err)
-	}
-
 	collectionsPath := c.solrRoot + collectionsPath
 	liveNodesPath := c.solrRoot + liveNodesPath
 	queryNodesPath := c.solrRoot + liveQueryNodesPath
