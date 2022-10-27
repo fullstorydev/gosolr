@@ -71,14 +71,8 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		t.Fatal(err)
 	}
 
-	// Solrmonitor checks the "clusterstate.json" file in the root node it is given.
 	// So seed that file.
 	_, err = conn.Create(root, nil, 0, zk.WorldACL(zk.PermAll))
-	if err != nil && err != zk.ErrNodeExists {
-		conn.Close()
-		t.Fatal(err)
-	}
-	_, err = conn.Create(root+"/clusterstate.json", []byte("{}"), 0, zk.WorldACL(zk.PermAll))
 	if err != nil && err != zk.ErrNodeExists {
 		conn.Close()
 		t.Fatal(err)
