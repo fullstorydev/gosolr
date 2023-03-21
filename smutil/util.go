@@ -23,7 +23,7 @@ import (
 	"github.com/fullstorydev/zk"
 )
 
-// ParseNodeName parses a solr node identifier into an IP/hostname, a port, and a suffix.
+// ParseNodeName parses a solr node identifier into an IP/hostname and a port.
 func ParseNodeName(node string) (string, string, error) {
 	suffixIndex := strings.LastIndex(node, "_")
 	if suffixIndex == -1 {
