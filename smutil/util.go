@@ -23,21 +23,23 @@ import (
 	"github.com/fullstorydev/zk"
 )
 
-// ParseNodeName parses a solr node identifier into an IP, a port, and a suffix.
+// ParseNodeName parses a solr node identifier into an IP/hostname, a port, and a suffix.
 func ParseNodeName(node string) (string, string, error) {
-	parts := strings.SplitN(node, "_", 2)
-	if len(parts) != 2 {
+	suffixIndex := strings.LastIndex(node, "_")
+	if suffixIndex == -1 {
 		return "", "", fmt.Errorf("malformed solr node identifier: no underscore present in %s", node)
 	}
 
-	if ip, port, err := net.SplitHostPort(parts[0]); err != nil {
-		return "", "", fmt.Errorf("%q is not a valid socket", parts[0])
+	hostAndPort := node[:suffixIndex]
+
+	if host, port, err := net.SplitHostPort(hostAndPort); err != nil {
+		return "", "", fmt.Errorf("%q is not a valid socket", hostAndPort)
 	} else {
 		_, err := strconv.ParseUint(port, 10, 16)
 		if err != nil {
 			return "", "", fmt.Errorf("%s is not a valid port", port)
 		}
-		return ip, port, nil
+		return host, port, nil
 	}
 }
 
