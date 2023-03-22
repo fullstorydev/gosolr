@@ -43,8 +43,9 @@ func ParseNodeName(node string) (string, string, error) {
 	}
 }
 
-// GetHostname performs an address lookup on the ip portion of e.g. `127.0.0.1:8983_solr` and returns the first hostname returned.
-// If the lookup fails, then ip is returned.
+// GetHostname gets the hostname from a Solr node name (ie <host>:<port>_solr).
+// If the host part is an ip, then the hostname will be returned by address lookup;
+// otherwise it returns the host part assuming it is a hostname.
 func GetHostname(solrNode string) string {
 	host, _, err := ParseNodeName(solrNode)
 	if err != nil {
