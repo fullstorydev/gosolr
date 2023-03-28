@@ -24,6 +24,7 @@ import (
 )
 
 // ParseNodeName parses a solr node identifier into an IP/hostname and a port.
+// Node name is in format of <host>:<port>_solr which <host> could either be an IP or hostname
 func ParseNodeName(node string) (string, string, error) {
 	suffixIndex := strings.LastIndex(node, "_")
 	if suffixIndex == -1 {
