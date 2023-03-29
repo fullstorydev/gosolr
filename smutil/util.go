@@ -23,41 +23,50 @@ import (
 	"github.com/fullstorydev/zk"
 )
 
-// ParseNodeName parses a solr node identifier into an IP, a port, and a suffix.
+// ParseNodeName parses a solr node identifier into an IP/hostname and a port.
+// Node name is in format of <host>:<port>_solr which <host> could either be an IP or hostname
 func ParseNodeName(node string) (string, string, error) {
-	parts := strings.SplitN(node, "_", 2)
-	if len(parts) != 2 {
+	suffixIndex := strings.LastIndex(node, "_")
+	if suffixIndex == -1 {
 		return "", "", fmt.Errorf("malformed solr node identifier: no underscore present in %s", node)
 	}
 
-	if ip, port, err := net.SplitHostPort(parts[0]); err != nil {
-		return "", "", fmt.Errorf("%q is not a valid socket", parts[0])
+	hostAndPort := node[:suffixIndex]
+
+	if host, port, err := net.SplitHostPort(hostAndPort); err != nil {
+		return "", "", fmt.Errorf("%q is not a valid socket", hostAndPort)
 	} else {
 		_, err := strconv.ParseUint(port, 10, 16)
 		if err != nil {
 			return "", "", fmt.Errorf("%s is not a valid port", port)
 		}
-		return ip, port, nil
+		return host, port, nil
 	}
 }
 
-// GetHostname performs an address lookup on the ip portion of e.g. `127.0.0.1:8983_solr` and returns the first hostname returned.
-// If the lookup fails, then ip is returned.
+// GetHostname gets the hostname from a Solr node name (ie <host>:<port>_solr).
+// If the host part is an ip, then the hostname will be returned by address lookup;
+// otherwise it returns the host part assuming it is a hostname.
 func GetHostname(solrNode string) string {
-	ip, _, err := ParseNodeName(solrNode)
+	host, _, err := ParseNodeName(solrNode)
 	if err != nil {
 		return ""
 	}
-	if names, err := net.LookupAddr(ip); err != nil {
-		return ip // fall back to just using the IP
-	} else {
-		// Just return the first part of the hostname
-		hostname := names[0]
-		i := strings.Index(hostname, ".")
-		if i > -1 {
-			hostname = hostname[:i]
+	if net.ParseIP(host) != nil { //then host is an IP address
+		ip := host
+		if names, err := net.LookupAddr(ip); err != nil {
+			return ip // fall back to just using the IP
+		} else {
+			hostname := names[0]
+			// Just return the first part of the hostname
+			i := strings.Index(hostname, ".")
+			if i > -1 {
+				hostname = hostname[:i]
+			}
+			return hostname
 		}
-		return hostname
+	} else { //then host is a hostname
+		return host
 	}
 }
 
