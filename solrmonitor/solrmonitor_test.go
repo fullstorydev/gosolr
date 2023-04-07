@@ -163,7 +163,28 @@ func TestCollectionChanges(t *testing.T) {
 
 	shouldExist(t, sm, "c1", collectionAssertions("_FS5"))
 
-	if len(testutil.solrEventListener.collectionStates) != 1 || testutil.solrEventListener.collections != 1 {
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c9", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shouldNotExist(t, sm, "c9")
+
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c9/state.json", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shouldNotExist(t, sm, "c9")
+
+	_, err = zkCli.Set(sm.solrRoot+"/collections/c9/state.json", []byte("{\"c9\":{ \"configName\": \"_FS7\", \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\", \"Base_url\":\"solr\", \"node_name\":\"8984_solr\", \"state\":\"active\", \"leader\":\"false\", \"type\": \"NRT\", \"force_set_state\":\"false\"}}}}}}"), -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shouldExist(t, sm, "c9", collectionAssertions("_FS7"))
+
+	if len(testutil.solrEventListener.collectionStates) != 2 || testutil.solrEventListener.collections != 2 {
 		t.Fatalf("Event listener didn't  not get event for collection  = %d, collectionstate = %d", testutil.solrEventListener.collections, len(testutil.solrEventListener.collectionStates))
 	}
 
@@ -312,7 +333,7 @@ func checkCollectionStateCallback(t *testing.T, expected int, found int) {
 	}
 }
 
-//that was meant for cachedState, which we removed as now we need to deserialize the stream as need to know PRS state of collection
+// that was meant for cachedState, which we removed as now we need to deserialize the stream as need to know PRS state of collection
 func DisabledTestBadStateJson(t *testing.T) {
 	sm, testutil := setup(t)
 	defer testutil.teardown()
