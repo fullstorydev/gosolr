@@ -676,7 +676,9 @@ func (coll *collection) carryOverConfigName(newState *CollectionState) {
 		return
 	}
 	// Config name is managed separately, carry over as needed.
-	newState.ConfigName = coll.configName
+	if len(coll.configName) > 0 {
+		newState.ConfigName = coll.configName
+	}
 }
 
 func (coll *collection) startMonitoringReplicaStatus() {
