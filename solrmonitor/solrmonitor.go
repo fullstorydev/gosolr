@@ -34,12 +34,6 @@ const (
 	clusterPropsPath   = "/clusterprops.json"
 )
 
-var (
-	pathsToWatch = map[string]struct{}{
-		clusterPropsPath: {},
-	}
-)
-
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
 type SolrMonitor struct {
 	logger    zk.Logger // where to debug log
@@ -54,6 +48,7 @@ type SolrMonitor struct {
 	overseerNodes     []string               // current set of overseer nodes (from roles.json)
 	clusterProps      map[string]string      // current set of cluster props (from clusterprops.json)
 	solrEventListener SolrEventListener      // to listen the solr cluster state
+	pathsToWatch      map[string]struct{}    // set of paths to always watch
 }
 
 // Minimal interface solrmonitor needs (allows for mock ZK implementations).
@@ -466,6 +461,7 @@ func (c *SolrMonitor) start() error {
 	queryNodesPath := c.solrRoot + liveQueryNodesPath
 	rolesPath := c.solrRoot + rolesPath
 	clusterPropsPath := c.solrRoot + clusterPropsPath
+	c.pathsToWatch[clusterPropsPath] = struct{}{}
 	c.zkWatcher.Start(c.zkCli, callbacks{c})
 
 	if err := c.zkWatcher.MonitorChildren(liveNodesPath); err != nil {
