@@ -86,6 +86,7 @@ func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logg
 		zkWatcher:         zkWatcher,
 		collections:       make(map[string]*collection),
 		solrEventListener: solrEventListener,
+		pathsToWatch:      make(map[string]struct{}),
 	}
 	err := c.start()
 	if err != nil {
