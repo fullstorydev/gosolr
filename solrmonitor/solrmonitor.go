@@ -123,7 +123,7 @@ func (c callbacks) ShouldWatchData(path string) bool {
 }
 
 func (c callbacks) ShouldWatchPath(path string) bool {
-	_, ok := pathsToWatch[path]
+	_, ok := c.pathsToWatch[path]
 	return ok
 }
 
