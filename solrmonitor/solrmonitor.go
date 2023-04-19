@@ -34,6 +34,12 @@ const (
 	clusterPropsPath   = "/clusterprops.json"
 )
 
+var (
+	pathsToWatch = map[string]struct{}{
+		clusterPropsPath: {},
+	}
+)
+
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
 type SolrMonitor struct {
 	logger    zk.Logger // where to debug log
@@ -117,7 +123,13 @@ func (c callbacks) ShouldWatchChildren(path string) bool {
 }
 
 func (c callbacks) ShouldWatchData(path string) bool {
-	return c.SolrMonitor.shouldWatchData(path)
+	// some paths, like "/clusterprops.json" we always want to watch, otherwise, see if we should watch that collection's path
+	return c.ShouldWatchPath(path) || c.SolrMonitor.shouldWatchData(path)
+}
+
+func (c callbacks) ShouldWatchPath(path string) bool {
+	_, ok := pathsToWatch[path]
+	return ok
 }
 
 func (c *SolrMonitor) Close() {
