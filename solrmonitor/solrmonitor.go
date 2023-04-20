@@ -120,12 +120,7 @@ func (c callbacks) ShouldWatchChildren(path string) bool {
 
 func (c callbacks) ShouldWatchData(path string) bool {
 	// some paths, like "/clusterprops.json" we always want to watch, otherwise, see if we should watch that collection's path
-	return c.ShouldWatchPath(path) || c.SolrMonitor.shouldWatchData(path)
-}
-
-func (c callbacks) ShouldWatchPath(path string) bool {
-	_, ok := c.pathsToWatch[path]
-	return ok
+	return c.SolrMonitor.shouldWatchPath(path) || c.SolrMonitor.shouldWatchCollection(path)
 }
 
 func (c *SolrMonitor) Close() {
@@ -436,9 +431,14 @@ func (c *SolrMonitor) callSolrListener(name string, state *CollectionState) {
 	}
 }
 
-func (c *SolrMonitor) shouldWatchData(path string) bool {
+func (c *SolrMonitor) shouldWatchCollection(path string) bool {
 	coll := c.getCollFromPath(path)
 	return coll != nil
+}
+
+func (c *SolrMonitor) shouldWatchPath(path string) bool {
+	_, ok := c.pathsToWatch[path]
+	return ok
 }
 
 func (c *SolrMonitor) getCollFromPath(path string) *collection {
