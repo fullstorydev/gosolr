@@ -365,6 +365,7 @@ type SEListener struct {
 	collections             int
 	collStateEvents         int
 	collReplicaChangeEvents int
+	clusterPropChangeEvents int
 	collectionStates        map[string]*CollectionState
 }
 
@@ -387,4 +388,8 @@ func (l *SEListener) SolrCollectionStateChanged(name string, collectionState *Co
 
 func (l *SEListener) SolrCollectionReplicaStatesChanged(name string, replicaStates map[string]*PerReplicaState) {
 	l.collReplicaChangeEvents++
+}
+
+func (l *SEListener) SolrClusterPropsChanged(clusterprops map[string]string) {
+	l.clusterPropChangeEvents++
 }
