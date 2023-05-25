@@ -24,6 +24,7 @@ type SolrNodeStatus struct {
 	NodeName string                     // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
 	Cores    map[string]*SolrCoreStatus // keys are core names
 	Zone     string                     // cloud zone where host exists
+	DiskSize float64
 }
 
 type SolrCoreStatus struct {

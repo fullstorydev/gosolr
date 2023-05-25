@@ -8,7 +8,8 @@ type nodeId int
 type Node struct {
 	Name    string `json:"name"`
 	Address string `json:"address"`
-	Size    int64  `json:"size"` // in bytes
+	Size    int64  `json:"size"`    // in bytes
+	MaxSize int64  `json:"maxSize"` // in bytes
 
 	id nodeId
 
