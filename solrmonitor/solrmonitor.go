@@ -486,7 +486,7 @@ func (c *SolrMonitor) start() error {
 	if err := c.zkWatcher.MonitorData(rolesPath, false); err != nil {
 		return err
 	}
-	if err := c.zkWatcher.MonitorData(clusterPropsPath); err != nil {
+	if err := c.zkWatcher.MonitorData(clusterPropsPath, false); err != nil {
 		return err
 	}
 	return nil
