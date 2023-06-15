@@ -231,17 +231,9 @@ func (m *ZkWatcherMan) fetchChildren(path string) (zkErr, cbErr error) {
 // synchronously callbacks.
 //
 // Even if this method returns an error, ZkWacherMan will continuously attempt to monitor the given path.
-// func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
-func (m *ZkWatcherMan) MonitorData(path string) error {
+func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
 	//TODO handle reconnection???
-	if _, err := m.addPersistentWatch(path, false); err != nil {
-		return err
-	}
-	return m.fetchAndNotifyCallback(path)
-}
-
-func (m *ZkWatcherMan) MonitorDataRecursive(path string) error {
-	if _, err := m.addPersistentWatch(path, true); err != nil {
+	if _, err := m.addPersistentWatch(path, recursive); err != nil {
 		return err
 	}
 	return m.fetchAndNotifyCallback(path)
@@ -259,7 +251,8 @@ func (m *ZkWatcherMan) fetchAndNotifyCallback(path string) error {
 	}
 
 	var data string
-	if err == zk.ErrNoNode { //for ErrNoNode, we use data = "". This is to maintain same behavior as getDataAndWatch
+	//for ErrNoNode, we use data = "". This is to maintain same behavior as previous getDataAndWatch
+	if err == zk.ErrNoNode {
 		data = ""
 	} else if err != nil { //unexpected error
 		return err
@@ -318,34 +311,6 @@ func (m *ZkWatcherMan) addPersistentWatch(path string, recursive bool) (<-chan z
 		return nil, err
 	}
 	return wrapEventQueue(context.Background(), eventQueue), err
-}
-
-// getDataAndWatch gets the data and returns one-time watch. The watch would be an exists watch if the path does not
-// exist
-func getDataAndWatch(zkCli ZkCli, path string) (string, *zk.Stat, <-chan zk.Event, error) {
-	for {
-		data, stat, err := zkCli.Get(path)
-		data, stat, dataWatch, err := zkCli.GetW(path)
-		if err == nil {
-			// Success, we're done.
-			return string(data), stat, dataWatch, nil
-		}
-
-		if err == zk.ErrNoNode {
-			// Node doesn't exist; add an existence watch.
-			exists, _, existsWatch, err := zkCli.ExistsW(path)
-			if err != nil {
-				return "", nil, nil, err
-			}
-			if exists {
-				// Improbable, but possible; first we checked and it wasn't there, then we checked and it was.
-				// Just loop and try again.
-				continue
-			}
-			return "", nil, existsWatch, nil
-		}
-		return "", nil, nil, err
-	}
 }
 
 // wrapEventQueue wraps the EventQueue returned from the newer zk library back to the <-chan zk.Event used by
