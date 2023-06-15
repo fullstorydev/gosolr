@@ -203,11 +203,11 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	case c.solrRoot + liveQueryNodesPath:
 		return c.updateLiveQueryNodes(children)
 	default:
-		//collectionsPath + "/" + coll.name + "/state.json": we want to state.json children
-		if strings.Contains(path, c.solrRoot+"/collections/") { //since we use recursive watch on /collections/<coll>, there should not be any children change fired
+		//since we use watch on /collections/<coll> and recursive watch on /collections/<coll>/state.json,
+		//there should not be any children change fired (for PRS entries ie)
+		if strings.Contains(path, c.solrRoot+"/collections/") {
 			return fmt.Errorf("solrmonitor: unexpected childrenChanged on collections: %s", path)
 		}
-		//return c.updateCollection(path, children)
 		return nil
 	}
 }
@@ -236,6 +236,8 @@ func (c *SolrMonitor) rolesChanged(data string) error {
 	return nil
 }
 
+// updateCollectionWithPrsChange update the collection with a single PRS update from the path
+// all the other PRS entries that do not match the path will be preserved
 func (c *SolrMonitor) updateCollectionWithPrsChange(path string) error {
 	coll := c.getCollFromPath(path)
 	prsEntry := path[strings.Index(path, "/state.json/")+len("/state.json/"):]
@@ -283,24 +285,6 @@ func (c *SolrMonitor) updateCollectionWithPrsChange(path string) error {
 	return nil
 }
 
-//func (c *SolrMonitor) updateCollection(path string, children []string) error {
-//	rs, err := c.updateCollectionState(path, children)
-//
-//	if err == nil && rs != nil && len(rs) > 0 {
-//		coll := c.getCollFromPath(path)
-//		if coll != nil {
-//			c.mu.RLock()
-//			defer c.mu.RUnlock()
-//			if c.solrEventListener != nil {
-//				collName := c.getCollNameFromPath(path)
-//				c.solrEventListener.SolrCollectionReplicaStatesChanged(collName, rs)
-//			}
-//		}
-//	}
-//
-//	return err
-//}
-
 func (c *SolrMonitor) parsePerReplicaState(child string) *PerReplicaState {
 	replicaParts := strings.Split(child, ":")
 	if len(replicaParts) < 3 || len(replicaParts) > 4 {
@@ -341,82 +325,6 @@ func (c *SolrMonitor) parsePerReplicaState(child string) *PerReplicaState {
 	return prs
 }
 
-//func (c *SolrMonitor) updateCollectionState(path string, children []string) (map[string]*PerReplicaState, error) {
-//	c.logger.Printf("updateCollectionState: path %s, children %d", path, len(children))
-//	coll := c.getCollFromPath(path)
-//	if coll == nil || len(children) == 0 {
-//		//looks like we have not got the collection event yet; it  should be safe to ignore it
-//		return nil, nil
-//	}
-//
-//	rmap := make(map[string]*PerReplicaState)
-//
-//	for _, r := range children {
-//		replicaParts := strings.Split(r, ":")
-//		if len(replicaParts) < 3 || len(replicaParts) > 4 {
-//			c.logger.Printf("PRS protocol is wrong %s ", r)
-//			panic(fmt.Sprintf("PRS protocol is in wrong format %s ", r))
-//		}
-//		version, err := strconv.ParseInt(replicaParts[1], 10, 32)
-//		if err != nil {
-//			c.logger.Printf("PRS protocol has wrong version %s ", r)
-//			panic(fmt.Sprintf("PRS protocol has wrong version %s ", r))
-//		}
-//
-//		prs := &PerReplicaState{
-//			Name:    replicaParts[0],
-//			Version: int32(version),
-//		}
-//
-//		switch replicaParts[2] {
-//		case "A":
-//			prs.State = "active"
-//		case "D":
-//			prs.State = "down"
-//		case "R":
-//			prs.State = "recovering"
-//		case "F":
-//			prs.State = "RECOVERY_FAILED"
-//		default:
-//			// marking inactive - as it should be recoverable error
-//			c.logger.Printf("ERROR: PRS protocol UNKNOWN state %s ", replicaParts[2])
-//			prs.State = "inactive"
-//		}
-//
-//		prs.Leader = "false"
-//		if len(replicaParts) == 4 {
-//			prs.Leader = "true"
-//		}
-//
-//		//keep ths latest prs
-//		if currentPrs, found := rmap[prs.Name]; found {
-//			if currentPrs.Version >= prs.Version {
-//				continue
-//			}
-//		}
-//
-//		rmap[prs.Name] = prs
-//	}
-//	c.logger.Printf("updateCollectionState on collection %s: updating prs state %s", coll.name, rmap)
-//	coll.mu.Lock()
-//	defer coll.mu.Unlock()
-//	//update the collection state based on new PRS (per replica state)
-//	for _, shard := range coll.collectionState.Shards {
-//		for rname, rstate := range shard.Replicas {
-//			if prs, found := rmap[rname]; found {
-//				if prs.Version < rstate.Version {
-//					c.logger.Printf("WARNING: PRS update with lower version than received previously. Existing: %v, Update: %v", rstate, prs)
-//				}
-//				rstate.Version = prs.Version
-//				rstate.Leader = prs.Leader
-//				rstate.State = prs.State
-//			}
-//		}
-//	}
-//
-//	return rmap, nil
-//}
-
 func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	switch path {
 	case c.solrRoot + collectionsPath:
@@ -426,13 +334,8 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	case c.solrRoot + liveQueryNodesPath:
 		return true
 	default:
-		//for /solr/collections/<collName>... it's now using recursive watch
-		//if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
-		//	coll := c.getCollFromPath(path)
-		//	if coll != nil {
-		//		return coll.isPRSEnabled()
-		//	}
-		//}
+		//for PRS entries in /solr/collections/<collName>/state.json ... it's now using recursive watch
+		//There should not be any child watches used per collection anymore
 		return false
 	}
 }
@@ -458,12 +361,14 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 		// common state.json change
 		state := coll.setStateData(data, version)
 		c.callSolrListener(coll.name, state)
-		//if coll.isPRSEnabled() {
-		//	coll.startMonitoringReplicaStatus()
-		//}
 
-	} else if coll.isPRSEnabled() && strings.Contains(path, "/state.json/") { //change on PRS entry TODO
-		if version > -1 { //we can skip deletion
+		//No need to start monitoring replica status, as the recursive watch on state.json is already doing that
+	} else if coll.isPRSEnabled() && strings.Contains(path, "/state.json/") { //change on PRS entry
+		//we can skip PRS entry deletion (version -1). By definition PRS entry deletion does NOT refer to
+		//deletion of the replica, but simply a temporary absence of such entry and should be follow up with another
+		//PRS entry creation.
+		//For replica deletion, it should be manifested as the state.json change itself.
+		if version > -1 {
 			c.updateCollectionWithPrsChange(path)
 		}
 	} else {
@@ -709,15 +614,6 @@ func (coll *collection) start() error {
 	if err := coll.parent.zkWatcher.MonitorDataRecursive(statePath); err != nil {
 		return err
 	}
-	//if coll.isPRSEnabled() {
-	//	if err := coll.parent.zkWatcher.MonitorDataRecursive(statePath); err != nil {
-	//		return err
-	//	}
-	//} else {
-	//	if err := coll.parent.zkWatcher.MonitorData(statePath); err != nil {
-	//		return err
-	//	}
-	//}
 
 	return nil
 }
@@ -802,19 +698,6 @@ func (coll *collection) carryOverConfigName(newState *CollectionState) {
 	// Config name is managed separately, carry over as needed.
 	newState.ConfigName = coll.configName
 }
-
-//func (coll *collection) startMonitoringReplicaStatus() {
-//	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
-//
-//	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
-//	if !coll.hasWatch() {
-//		err := coll.parent.zkWatcher.MonitorChildren(path)
-//		if err == nil {
-//			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
-//			coll.watchAdded()
-//		}
-//	}
-//}
 
 func (coll *collection) watchAdded() {
 	coll.mu.Lock()
