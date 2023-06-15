@@ -301,7 +301,7 @@ func getChildrenAndWatch(zkCli ZkCli, path string) ([]string, <-chan zk.Event, e
 	}
 }
 
-func (m *ZkWatcherMan) addPersistentWatch(path string, recursive bool) (<-chan zk.Event, error) {
+func (m *ZkWatcherMan) addPersistentWatch(path string, recursive bool) (zk.EventQueue, error) {
 	var addWatchMode zk.AddWatchMode
 	if recursive {
 		addWatchMode = zk.AddWatchModePersistentRecursive
@@ -314,5 +314,5 @@ func (m *ZkWatcherMan) addPersistentWatch(path string, recursive bool) (<-chan z
 	if err != nil {
 		return nil, err
 	}
-	return eventQueue.Chan, err
+	return eventQueue, err
 }

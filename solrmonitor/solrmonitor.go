@@ -59,7 +59,7 @@ type ZkCli interface {
 	ExistsW(path string) (bool, *zk.Stat, <-chan zk.Event, error)
 	State() zk.State
 	Close()
-	AddPersistentWatch(path string, mode zk.AddWatchMode) (ch *zk.EventQueueChannel, err error)
+	AddPersistentWatch(path string, mode zk.AddWatchMode) (ch zk.EventQueue, err error)
 	RemoveAllPersistentWatches(path string) (err error)
 }
 
