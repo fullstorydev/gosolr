@@ -246,6 +246,7 @@ func (m *ZkWatcherMan) MonitorData(path string) error {
 }
 
 func (m *ZkWatcherMan) MonitorDataRecursive(path string) error {
+	m.logger.Printf("RECURSIVE monitor %s", path)
 	if _, err := m.addPersistentWatch(path, true); err != nil {
 		return err
 	}
@@ -253,27 +254,24 @@ func (m *ZkWatcherMan) MonitorDataRecursive(path string) error {
 }
 
 func (m *ZkWatcherMan) fetchAndNotifyCallback(path string) error {
-	if data, stat, err := m.zkCli.Get(path); err != nil {
-		return err
-	} else {
-		m.callbacks.DataChanged(path, string(data), stat)
+	dataBytes, stat, err := m.zkCli.Get(path)
+	if err == zk.ErrClosing { //if closing simply return nil and do nothing
 		return nil
 	}
-}
 
-//func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
-//	if data, stat, _, err := getDataAndWatch(m.zkCli, path); err != nil {
-//		if err == zk.ErrClosing {
-//			return nil, nil
-//		}
-//		// We failed to set a watch; add a task for the recovery thread to keep trying
-//		m.logger.Printf("ZkWatcherMan %s: error getting data: %s", path, err)
-//		m.enqueueDeferredTask(deferredDataTask{path: path, recursive: recursive})
-//		return err, nil
-//	} else {
-//		return nil, m.callbacks.DataChanged(path, data, stat)
-//	}
-//}
+	var data string
+	if err == zk.ErrNoNode { //for ErrNoNode, we use data = "". This is to maintain same behavior as getDataAndWatch
+		data = ""
+	} else if err != nil { //unexpected error
+		return err
+	} else {
+		data = string(dataBytes)
+	}
+
+	m.callbacks.DataChanged(path, data, stat)
+	return nil
+
+}
 
 //func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
 //	if data, stat, _, err := getDataAndWatch(m.zkCli, path); err != nil {
@@ -340,8 +338,10 @@ func (m *ZkWatcherMan) addPersistentWatch(path string, recursive bool) (<-chan z
 	var addWatchMode zk.AddWatchMode
 	if recursive {
 		addWatchMode = zk.AddWatchModePersistentRecursive
+		m.logger.Printf("Adding persistent watch (recursive) on %s", path)
 	} else {
 		addWatchMode = zk.AddWatchModePersistent
+		m.logger.Printf("Adding persistent watch (non-recursive) on %s", path)
 	}
 	eventQueue, err := m.zkCli.AddPersistentWatch(path, addWatchMode)
 	if err != nil {
@@ -350,7 +350,8 @@ func (m *ZkWatcherMan) addPersistentWatch(path string, recursive bool) (<-chan z
 	return wrapEventQueue(context.Background(), eventQueue), err
 }
 
-// Non persistent watch
+// getDataAndWatch gets the data and returns one-time watch. The watch would be an exists watch if the path does not
+// exist
 func getDataAndWatch(zkCli ZkCli, path string) (string, *zk.Stat, <-chan zk.Event, error) {
 	for {
 		data, stat, err := zkCli.Get(path)
