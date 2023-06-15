@@ -233,9 +233,13 @@ func (m *ZkWatcherMan) fetchChildren(path string) (zkErr, cbErr error) {
 // Even if this method returns an error, ZkWacherMan will continuously attempt to monitor the given path.
 func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
 	//TODO handle reconnection???
+
+	//can ignore the returned channel as zkwatcherman relies on its EventCallback being wired up
+	//to the zk.Conn as a global callback option
 	if _, err := m.addPersistentWatch(path, recursive); err != nil {
 		return err
 	}
+	//fetch once and notify the corresponding callback
 	return m.fetchAndNotifyCallback(path)
 }
 
@@ -266,7 +270,7 @@ func (m *ZkWatcherMan) fetchAndNotifyCallback(path string) error {
 }
 
 func (m *ZkWatcherMan) StopMonitorData(path string) {
-	m.zkCli.RemovePersistentWatch(path, nil)
+	m.zkCli.RemoveAllPersistentWatches(path)
 }
 
 // TODO flag on permanent or not
@@ -310,24 +314,5 @@ func (m *ZkWatcherMan) addPersistentWatch(path string, recursive bool) (<-chan z
 	if err != nil {
 		return nil, err
 	}
-	return wrapEventQueue(context.Background(), eventQueue), err
-}
-
-// wrapEventQueue wraps the EventQueue returned from the newer zk library back to the <-chan zk.Event used by
-// existing caller.
-func wrapEventQueue(ctx context.Context, q zk.EventQueue) <-chan zk.Event {
-	eventCh := make(chan zk.Event)
-
-	go func() {
-		for {
-			event, err := q.Next(ctx)
-			if err != nil {
-				return
-			} else {
-				eventCh <- event
-			}
-		}
-	}()
-
-	return eventCh
+	return eventQueue.Chan, err
 }

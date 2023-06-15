@@ -59,8 +59,8 @@ type ZkCli interface {
 	ExistsW(path string) (bool, *zk.Stat, <-chan zk.Event, error)
 	State() zk.State
 	Close()
-	AddPersistentWatch(path string, mode zk.AddWatchMode) (ch zk.EventQueue, err error)
-	RemovePersistentWatch(path string, ch zk.EventQueue) (err error)
+	AddPersistentWatch(path string, mode zk.AddWatchMode) (ch *zk.EventQueueChannel, err error)
+	RemoveAllPersistentWatches(path string) (err error)
 }
 
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
@@ -683,6 +683,7 @@ func (coll *collection) start() error {
 func (coll *collection) stop() {
 	collPath := coll.parent.solrRoot + "/collections/" + coll.name
 	statePath := collPath + "/state.json"
+	coll.parent.zkWatcher.StopMonitorData(collPath)
 	coll.parent.zkWatcher.StopMonitorData(statePath)
 }
 
