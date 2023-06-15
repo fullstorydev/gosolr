@@ -23,6 +23,14 @@ func newMockZkClient() ZkCli {
 type mockZkClient struct {
 }
 
+func (m mockZkClient) AddPersistentWatch(path string, mode zk.AddWatchMode) (ch zk.EventQueue, err error) {
+	panic("implement me")
+}
+
+func (m mockZkClient) RemovePersistentWatch(path string, ch zk.EventQueue) (err error) {
+	panic("implement me")
+}
+
 func (m mockZkClient) ChildrenW(path string) ([]string, *zk.Stat, <-chan zk.Event, error) {
 	panic("Not implemented")
 }

@@ -37,7 +37,8 @@ type deferredChildrenTask struct {
 
 // A MonitorData request whose last attempt to set a watch failed.
 type deferredDataTask struct {
-	path string
+	path      string
+	recursive bool
 }
 
 // Helper class to continuously monitor nodes for state or data changes.
@@ -76,18 +77,18 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 	case zk.EventNodeCreated, zk.EventNodeDeleted:
 		// Just enqueue both kinds of tasks, we might throw one away later.
 		m.logger.Printf("ZkWatcherMan %s: %s", evt.Type, evt.Path)
-		m.enqueueDeferredTask(deferredDataTask{evt.Path})
+		m.enqueueDeferredTask(deferredDataTask{evt.Path, false}) //TODO probably not care as we do not need to reinstall if watch is permanent
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	case zk.EventNodeDataChanged:
 		m.logger.Printf("ZkWatcherMan data %s: %s", evt.Type, evt.Path)
-		m.enqueueDeferredTask(deferredDataTask{evt.Path})
+		m.enqueueDeferredTask(deferredDataTask{evt.Path, false}) //TODO
 	case zk.EventNodeChildrenChanged:
 		m.logger.Printf("ZkWatcherMan children %s: %s", evt.Type, evt.Path)
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	case zk.EventNotWatching:
 		// Lost ZK session; we'll need to re-register all watches when it comes back.
 		// Just enqueue both kinds of tasks, we might throw them away later.
-		m.enqueueDeferredTask(deferredDataTask{evt.Path})
+		m.enqueueDeferredTask(deferredDataTask{evt.Path, false}) //TODO
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	default:
 		if evt.Err == zk.ErrClosing {
@@ -155,13 +156,12 @@ func (m *ZkWatcherMan) Start(zkCli ZkCli, callbacks Callbacks) {
 						}
 					case deferredDataTask:
 						if callbacks.ShouldWatchData(task.path) {
-							zkErr, cbErr := m.fetchData(task.path)
-							if zkErr != nil {
-								m.logger.Printf("zkwatcherman: error fetching data for %s: %s", task.path, zkErr)
-							} else if cbErr != nil {
-								m.logger.Printf("zkwatcherman: error in data callback for %s: %s", task.path, zkErr)
+							if err := m.fetchAndNotifyCallback(task.path); err != nil {
+								m.logger.Printf("zkwatcherman: error fetching data for %s: %s", task.path, err)
+								success = false
+							} else {
+								success = true
 							}
-							success = zkErr == nil
 						}
 					default:
 						panic(fmt.Sprintf("Unexpected item in taskqueue %+v", task))
@@ -232,28 +232,84 @@ func (m *ZkWatcherMan) fetchChildren(path string) (zkErr, cbErr error) {
 // synchronously callbacks.
 //
 // Even if this method returns an error, ZkWacherMan will continuously attempt to monitor the given path.
+// func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
 func (m *ZkWatcherMan) MonitorData(path string) error {
-	zkErr, cbErr := m.fetchData(path)
-	if zkErr != nil {
-		return zkErr
+	//zkErr, cbErr := m.fetchData(path, false, true)
+	//if zkErr != nil {
+	//	return zkErr
+	//}
+	//return cbErr
+	//TODO handle reconnection???
+	if _, err := m.addPersistentWatch(path, false); err != nil {
+		return err
 	}
-	return cbErr
+	return m.fetchAndNotifyCallback(path)
 }
 
-func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
-	if data, stat, _, err := getDataAndWatch(m.zkCli, path); err != nil {
-		if err == zk.ErrClosing {
-			return nil, nil
-		}
-		// We failed to set a watch; add a task for the recovery thread to keep trying
-		m.logger.Printf("ZkWatcherMan %s: error getting data: %s", path, err)
-		m.enqueueDeferredTask(deferredDataTask{path: path})
-		return err, nil
+func (m *ZkWatcherMan) MonitorDataRecursive(path string) error {
+	if _, err := m.addPersistentWatch(path, true); err != nil {
+		return err
+	}
+	return m.fetchAndNotifyCallback(path)
+}
+
+func (m *ZkWatcherMan) fetchAndNotifyCallback(path string) error {
+	if data, stat, err := m.zkCli.Get(path); err != nil {
+		return err
 	} else {
-		return nil, m.callbacks.DataChanged(path, data, stat)
+		m.callbacks.DataChanged(path, string(data), stat)
+		return nil
 	}
 }
 
+//func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
+//	if data, stat, _, err := getDataAndWatch(m.zkCli, path); err != nil {
+//		if err == zk.ErrClosing {
+//			return nil, nil
+//		}
+//		// We failed to set a watch; add a task for the recovery thread to keep trying
+//		m.logger.Printf("ZkWatcherMan %s: error getting data: %s", path, err)
+//		m.enqueueDeferredTask(deferredDataTask{path: path, recursive: recursive})
+//		return err, nil
+//	} else {
+//		return nil, m.callbacks.DataChanged(path, data, stat)
+//	}
+//}
+
+//func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
+//	if data, stat, _, err := getDataAndWatch(m.zkCli, path); err != nil {
+//		if err == zk.ErrClosing {
+//			return nil, nil
+//		}
+//		// We failed to set a watch; add a task for the recovery thread to keep trying
+//		m.logger.Printf("ZkWatcherMan %s: error getting data: %s", path, err)
+//		m.enqueueDeferredTask(deferredDataTask{path: path, recursive: recursive})
+//		return err, nil
+//	} else {
+//		return nil, m.callbacks.DataChanged(path, data, stat)
+//	}
+//}
+
+// Non persistent - not used
+//func (m *ZkWatcherMan) fetchDataAndWatch(path string) (zkErr, cbErr error) {
+//	if data, stat, _, err := getDataAndWatch(m.zkCli, path); err != nil {
+//		if err == zk.ErrClosing {
+//			return nil, nil
+//		}
+//		// We failed to set a watch; add a task for the recovery thread to keep trying
+//		m.logger.Printf("ZkWatcherMan %s: error getting data: %s", path, err)
+//		m.enqueueDeferredTask(deferredDataTask{path: path, recursive: recursive})
+//		return err, nil
+//	} else {
+//		return nil, m.callbacks.DataChanged(path, data, stat)
+//	}
+//}
+
+func (m *ZkWatcherMan) StopMonitorData(path string) {
+	m.zkCli.RemovePersistentWatch(path, nil)
+}
+
+// TODO flag on permanent or not
 func getChildrenAndWatch(zkCli ZkCli, path string) ([]string, <-chan zk.Event, error) {
 	for {
 		children, _, childrenWatch, err := zkCli.ChildrenW(path)
@@ -281,8 +337,24 @@ func getChildrenAndWatch(zkCli ZkCli, path string) ([]string, <-chan zk.Event, e
 	}
 }
 
+func (m *ZkWatcherMan) addPersistentWatch(path string, recursive bool) (<-chan zk.Event, error) {
+	var addWatchMode zk.AddWatchMode
+	if recursive {
+		addWatchMode = zk.AddWatchModePersistentRecursive
+	} else {
+		addWatchMode = zk.AddWatchModePersistent
+	}
+	eventQueue, err := m.zkCli.AddPersistentWatch(path, addWatchMode)
+	if err != nil {
+		return nil, err
+	}
+	return wrapEventQueue(context.Background(), eventQueue), err
+}
+
+// Non persistent watch
 func getDataAndWatch(zkCli ZkCli, path string) (string, *zk.Stat, <-chan zk.Event, error) {
 	for {
+		data, stat, err := zkCli.Get(path)
 		data, stat, dataWatch, err := zkCli.GetW(path)
 		if err == nil {
 			// Success, we're done.
@@ -302,7 +374,43 @@ func getDataAndWatch(zkCli ZkCli, path string) (string, *zk.Stat, <-chan zk.Even
 			}
 			return "", nil, existsWatch, nil
 		}
-
 		return "", nil, nil, err
+
+		//data, stat, err := zkCli.Get(path)
+		//if err == zk.ErrNoNode {
+		//	// Node doesn't exist; add an existence watch. TODO for permanent watch, test if it can be added to non exist node
+		//	exists, _, existsWatch, err := zkCli.ExistsW(path)
+		//	if err != nil {
+		//		return "", nil, nil, err
+		//	}
+		//	if exists {
+		//		// Improbable, but possible; first we checked and it wasn't there, then we checked and it was.
+		//		// Just loop and try again.
+		//		continue
+		//	}
+		//	return "", nil, existsWatch, nil
+		//} else if err != nil {
+		//	return "", nil, nil, err
+		//} else { //err == nil
+		//	return string(data), stat, wrapEventQueue(context.Background(), eventQueue), nil
+		//}
+
 	}
+}
+
+func wrapEventQueue(ctx context.Context, q zk.EventQueue) <-chan zk.Event {
+	eventCh := make(chan zk.Event)
+
+	go func() {
+		for {
+			event, err := q.Next(ctx)
+			if err != nil {
+				return
+			} else {
+				eventCh <- event
+			}
+		}
+	}()
+
+	return eventCh
 }
