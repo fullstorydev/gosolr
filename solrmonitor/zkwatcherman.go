@@ -37,8 +37,7 @@ type deferredChildrenTask struct {
 
 // A MonitorData request whose last attempt to set a watch failed.
 type deferredDataTask struct {
-	path      string
-	recursive bool
+	path string
 }
 
 // Helper class to continuously monitor nodes for state or data changes.
@@ -77,18 +76,18 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 	case zk.EventNodeCreated, zk.EventNodeDeleted:
 		// Just enqueue both kinds of tasks, we might throw one away later.
 		m.logger.Printf("ZkWatcherMan %s: %s", evt.Type, evt.Path)
-		m.enqueueDeferredTask(deferredDataTask{evt.Path, false}) //TODO probably not care as we do not need to reinstall if watch is permanent
+		m.enqueueDeferredTask(deferredDataTask{evt.Path})
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	case zk.EventNodeDataChanged:
 		m.logger.Printf("ZkWatcherMan data %s: %s", evt.Type, evt.Path)
-		m.enqueueDeferredTask(deferredDataTask{evt.Path, false}) //TODO
+		m.enqueueDeferredTask(deferredDataTask{evt.Path})
 	case zk.EventNodeChildrenChanged:
 		m.logger.Printf("ZkWatcherMan children %s: %s", evt.Type, evt.Path)
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	case zk.EventNotWatching:
 		// Lost ZK session; we'll need to re-register all watches when it comes back.
 		// Just enqueue both kinds of tasks, we might throw them away later.
-		m.enqueueDeferredTask(deferredDataTask{evt.Path, false}) //TODO
+		m.enqueueDeferredTask(deferredDataTask{evt.Path})
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	default:
 		if evt.Err == zk.ErrClosing {
