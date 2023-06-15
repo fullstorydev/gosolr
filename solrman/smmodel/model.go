@@ -23,8 +23,6 @@ type Model struct {
 	Nodes       []*Node       `json:"nodes"`
 	Collections []*Collection `json:"collections"`
 	Cores       []*Core
-
-	MaxSizePerNode int64 // maximum allowed size on a
 }
 
 func (m *Model) Add(core *Core) {
@@ -219,7 +217,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 
 				// If the source is substantially under the maximum size, only move if the target node is substantially smaller than the source node.
 				// This is to avoid move thrashing in a cluster that is drastically below capacity while nodes are rapidly growing.
-				if source.Size < 10*m.MaxSizePerNode && target.Size+5*core.Size >= source.Size {
+				if source.Size < 10*source.MaxSize && target.Size+5*core.Size >= source.Size {
 					continue
 				}
 
@@ -287,7 +285,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				// no good choices
 				break
 			}
-			if m.MaxSizePerNode > 0 && target.Size >= m.MaxSizePerNode {
+			if target.MaxSize > 0 && target.Size >= target.MaxSize {
 				// too much data already on this node
 				continue
 			}
