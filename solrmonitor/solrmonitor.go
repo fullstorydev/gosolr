@@ -405,9 +405,9 @@ func (c *SolrMonitor) getCollFromPath(path string) *collection {
 
 func (c *SolrMonitor) getCollNameFromPath(path string) string {
 	//example inputs:
+	// <root>/collections/myCollection
 	// <root>/collections/myCollection/state.json
 	// <root>/collections/myCollection/state.json/some_prs
-	// <root>/collections/myCollection/state.json
 
 	name := strings.TrimPrefix(path, c.solrRoot+"/collections/")
 	stateStartIndex := strings.Index(name, "/state.json")
