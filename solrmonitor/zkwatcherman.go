@@ -244,6 +244,7 @@ func (m *ZkWatcherMan) fetchChildren(path string) (zkErr, cbErr error) {
 // Even if this method returns an error, ZkWacherMan will continuously attempt to monitor the given path.
 func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
 	//TODO handle reconnection???
+	//TODO ordering matter? what if child changes come in between the watch and fetch? or the other way around?
 
 	//can ignore the returned channel as zkwatcherman relies on its EventCallback being wired up
 	//to the zk.Conn as a global callback option
@@ -251,7 +252,18 @@ func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
 		return err
 	}
 	//fetch once and notify the corresponding callback
-	return m.fetchAndNotifyCallback(path)
+	if err := m.fetchAndNotifyCallback(path); err != nil {
+		return err
+	}
+
+	if recursive { //fetch children recursively and notify callbacks //TODO should get stats and do it recursively!
+		children, _, err := m.zkCli.Children(path)
+		if err != nil {
+			return err
+		}
+		m.callbacks.ChildrenChanged(path, children)
+	}
+	return nil
 }
 
 // fetchAndNotifyCallback fetches the data of the path and then notifies the

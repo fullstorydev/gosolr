@@ -54,6 +54,7 @@ type SolrMonitor struct {
 // Minimal interface solrmonitor needs (allows for mock ZK implementations).
 type ZkCli interface {
 	ChildrenW(path string) ([]string, *zk.Stat, <-chan zk.Event, error)
+	Children(path string) ([]string, *zk.Stat, error)
 	Get(path string) ([]byte, *zk.Stat, error)
 	GetW(path string) ([]byte, *zk.Stat, <-chan zk.Event, error)
 	ExistsW(path string) (bool, *zk.Stat, <-chan zk.Event, error)
@@ -231,9 +232,10 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 		return c.updateLiveQueryNodes(children)
 	default:
 		//since we use watch on /collections/<coll> and recursive watch on /collections/<coll>/state.json,
-		//there should not be any children change fired (for PRS entries ie)
+		//the ONLY change should be on init (for PRS entries)
 		if strings.Contains(path, c.solrRoot+"/collections/") {
-			return fmt.Errorf("solrmonitor: unexpected childrenChanged on collections: %s", path)
+			return c.initCollectionWithPrsStrings(c.getCollFromPath(path), children)
+			//return fmt.Errorf("solrmonitor: unexpected childrenChanged on collections: %s", path)
 		}
 		return nil
 	}
@@ -284,26 +286,39 @@ func (c *SolrMonitor) clusterPropsChanged(data string) error {
 	return nil
 }
 
+func (c *SolrMonitor) updateCollectionWithPrsChange(path string, isNew bool) error {
+	coll := c.getCollFromPath(path)
+	prsString := path[strings.Index(path, "/state.json/")+len("/state.json/"):]
+	return c.updateCollectionWithPrsStrings(coll, []string{prsString}, isNew)
+}
+
+func (c *SolrMonitor) initCollectionWithPrsStrings(coll *collection, children []string) error {
+	c.logger.Printf("\nInitializing with PRS strings\n: %v", children)
+	return c.updateCollectionWithPrsStrings(coll, children, true)
+}
+
 // updateCollectionWithPrsChange does 2 things:
 // 1.update the collection with a single PRS update from the path
 // 2.notify the solrEventListener of the PRS change, it provides the full PRS entries + the new updated one
 // if isNew is false, then it should be a deletion. Take note that isNew could either for a brand-new replica, or an
 // existing replica with a different version
-func (c *SolrMonitor) updateCollectionWithPrsChange(path string, isNew bool) error {
-	coll := c.getCollFromPath(path)
-	prsEntry := path[strings.Index(path, "/state.json/")+len("/state.json/"):]
-	prs := c.parsePerReplicaState(prsEntry)
+func (c *SolrMonitor) updateCollectionWithPrsStrings(coll *collection, prsStrings []string, isNew bool) error {
 
 	allPrs := make(map[string]*PerReplicaState)
 
+	for _, prsString := range prsStrings {
+		prs := c.parsePerReplicaState(prsString)
+		allPrs[prs.Name] = prs
+	}
+
 	//update PRS, can we ignore deletion? it's probably ignored before as well?
-	c.logger.Printf("updateCollectionState on collection %s: updating prs state %s", coll.name, allPrs)
+	c.logger.Printf("updateCollectionState (isNew? %v) on collection %s: updating prs state %s\n", isNew, coll.name, allPrs)
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
 	for _, shard := range coll.collectionState.Shards {
 		for rname, rstate := range shard.Replicas {
 			isUpdate := false
-			if rname == prs.Name {
+			if prs, exists := allPrs[rname]; exists {
 				if isNew {
 					if prs.Version <= rstate.Version { //keep the latest PRS state
 						c.logger.Printf("WARNING: PRS update with lower/same version than received previously. Existing: %v, Incoming: %v", rstate, prs)
@@ -334,8 +349,7 @@ func (c *SolrMonitor) updateCollectionWithPrsChange(path string, isNew bool) err
 	c.mu.RLock() //not totally sure we need this lock? as we are not mutating anything here?
 	defer c.mu.RUnlock()
 	if c.solrEventListener != nil {
-		collName := c.getCollNameFromPath(path)
-		c.solrEventListener.SolrCollectionReplicaStatesChanged(collName, allPrs)
+		c.solrEventListener.SolrCollectionReplicaStatesChanged(coll.name, allPrs)
 	}
 
 	return nil
