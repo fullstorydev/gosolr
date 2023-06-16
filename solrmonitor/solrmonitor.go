@@ -110,19 +110,19 @@ func (c callbacks) ChildrenChanged(path string, children []string) error {
 }
 
 func (c callbacks) DataChanged(path string, data string, stat *zk.Stat) error {
+	if c.isPrsPath(path) { //special handling for PRS entry, since we are not fetching data on them
+		if stat.Version == -1 { //deletion
+			return c.SolrMonitor.pathDeleted(path)
+		} else {
+			return c.SolrMonitor.pathAdded(path)
+		}
+	}
+
 	version := int32(-1)
 	if stat != nil {
 		version = stat.Version
 	}
 	return c.SolrMonitor.dataChanged(path, data, version)
-}
-
-func (c callbacks) PathAdded(path string) error {
-	return c.SolrMonitor.pathAdded(path)
-}
-
-func (c callbacks) PathDeleted(path string) error {
-	return c.SolrMonitor.pathDeleted(path)
 }
 
 func (c callbacks) ShouldWatchChildren(path string) bool {

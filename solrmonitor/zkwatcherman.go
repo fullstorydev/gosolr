@@ -26,8 +26,6 @@ import (
 type Callbacks interface {
 	ChildrenChanged(path string, children []string) error
 	DataChanged(path string, data string, stat *zk.Stat) error
-	PathAdded(path string) error
-	PathDeleted(path string) error
 	ShouldWatchChildren(path string) bool
 	ShouldWatchData(path string) bool
 	ShouldFetchData(path string) bool //whether we need to fetch the data from the node along with the stat, in some cases, knowing just the path and whether it's a deletion are good enough
@@ -84,9 +82,9 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 			m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 		} else { //all data watch are permanent, all we need to do is notify the callback
 			if evt.Type == zk.EventNodeCreated {
-				m.callbacks.PathAdded(evt.Path)
+				m.callbacks.DataChanged(evt.Path, "", &zk.Stat{Version: 1})
 			} else {
-				m.callbacks.PathDeleted(evt.Path)
+				m.callbacks.DataChanged(evt.Path, "", &zk.Stat{Version: -1})
 			}
 		}
 	case zk.EventNodeDataChanged:
