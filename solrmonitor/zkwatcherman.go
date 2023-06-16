@@ -236,13 +236,24 @@ func (m *ZkWatcherMan) fetchChildren(path string) (zkErr, cbErr error) {
 	}
 }
 
-// Begin monitoring the data at the given path, will resolve the current data before returning.
+func (m *ZkWatcherMan) MonitorData(path string) error {
+	return m.monitorData(path, false, 0)
+}
+
+func (m *ZkWatcherMan) MonitorDataRecursive(path string, fetchDepth int) error {
+	return m.monitorData(path, true, fetchDepth)
+}
+
+// MonitorData begins monitoring the data at the given path, will resolve the current data before returning.
 //
 // Will return either a ZK error if the fetch failed, or propagate any errors returned from
 // synchronously callbacks.
 //
 // Even if this method returns an error, ZkWacherMan will continuously attempt to monitor the given path.
-func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
+// fetchDepth is only used when recursive is true, fetch children (and notify cbs) will only go up to this depth.
+// for example, if fetchDepth = 1, this will only fetch the immediate children of path,
+// notify via m.callbacks.ChildrenChanged and stop there
+func (m *ZkWatcherMan) monitorData(path string, recursive bool, fetchDepth int) error {
 	//TODO handle reconnection???
 	//TODO ordering matter? what if child changes come in between the watch and fetch? or the other way around?
 
@@ -257,7 +268,7 @@ func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
 	}
 
 	if recursive { //fetch children recursively and notify callbacks
-		m.fetchChildrenAndNotifyCallback(path, 1, 1) //TODO Only go first level for now
+		m.fetchChildrenAndNotifyCallback(path, 1, fetchDepth)
 	}
 	return nil
 }

@@ -531,10 +531,10 @@ func (c *SolrMonitor) start() error {
 	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
 		return err
 	}
-	if err := c.zkWatcher.MonitorData(rolesPath, false); err != nil {
+	if err := c.zkWatcher.MonitorData(rolesPath); err != nil {
 		return err
 	}
-	if err := c.zkWatcher.MonitorData(clusterPropsPath, false); err != nil {
+	if err := c.zkWatcher.MonitorData(clusterPropsPath); err != nil {
 		return err
 	}
 	return nil
@@ -717,11 +717,11 @@ func parseStateData(name string, data []byte, version int32) (*CollectionState, 
 func (coll *collection) start() error {
 	collPath := coll.parent.solrRoot + "/collections/" + coll.name
 	statePath := collPath + "/state.json"
-	if err := coll.parent.zkWatcher.MonitorData(collPath, false); err != nil { //for init
+	if err := coll.parent.zkWatcher.MonitorData(collPath); err != nil { //for init
 		return err
 	}
 
-	if err := coll.parent.zkWatcher.MonitorData(statePath, true); err != nil {
+	if err := coll.parent.zkWatcher.MonitorDataRecursive(statePath, 1); err != nil {
 		return err
 	}
 
