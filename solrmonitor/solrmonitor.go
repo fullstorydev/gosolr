@@ -284,9 +284,12 @@ func (c *SolrMonitor) clusterPropsChanged(data string) error {
 	return nil
 }
 
-// updateCollectionWithPrsChange update the collection with a single PRS update from the path
-// all the other PRS entries that do not match the path will be preserved
-func (c *SolrMonitor) updateCollectionWithPrsChange(path string) error {
+// updateCollectionWithPrsChange does 2 things:
+// 1.update the collection with a single PRS update from the path
+// 2.notify the solrEventListener of the PRS change, it provides the full PRS entries + the new updated one
+// if isNew is false, then it should be a deletion. Take note that isNew could either for a brand-new replica, or an
+// existing replica with a different version
+func (c *SolrMonitor) updateCollectionWithPrsChange(path string, isNew bool) error {
 	coll := c.getCollFromPath(path)
 	prsEntry := path[strings.Index(path, "/state.json/")+len("/state.json/"):]
 	prs := c.parsePerReplicaState(prsEntry)
@@ -301,14 +304,19 @@ func (c *SolrMonitor) updateCollectionWithPrsChange(path string) error {
 		for rname, rstate := range shard.Replicas {
 			isUpdate := false
 			if rname == prs.Name {
-				if prs.Version <= rstate.Version { //keep the latest PRS state
-					c.logger.Printf("WARNING: PRS update with lower/same version than received previously. Existing: %v, Incoming: %v", rstate, prs)
-				} else {
+				if isNew {
+					if prs.Version <= rstate.Version { //keep the latest PRS state
+						c.logger.Printf("WARNING: PRS update with lower/same version than received previously. Existing: %v, Incoming: %v", rstate, prs)
+					} else {
+						isUpdate = true
+						rstate.Version = prs.Version
+						rstate.Leader = prs.Leader
+						rstate.State = prs.State
+						allPrs[prs.Name] = prs
+					}
+				} else { //then it's a PRS entry deletion
+					//so that we skip copying this entry in next step, essentially removing it from the allPrs
 					isUpdate = true
-					rstate.Version = prs.Version
-					rstate.Leader = prs.Leader
-					rstate.State = prs.State
-					allPrs[prs.Name] = prs
 				}
 			}
 
@@ -401,15 +409,11 @@ func (c *SolrMonitor) isPrsPath(path string) bool {
 }
 
 func (c *SolrMonitor) pathAdded(path string) error {
-	return c.updateCollectionWithPrsChange(path)
+	return c.updateCollectionWithPrsChange(path, true)
 }
 
 func (c *SolrMonitor) pathDeleted(path string) error {
-	//we can skip PRS entry deletion. By definition PRS entry deletion does NOT refer to
-	//deletion of the replica, but simply a temporary absence of such entry and should be follow up with another
-	//PRS entry creation.
-	//For replica deletion, it should be manifested as the state.json change itself.
-	return nil //TODO
+	return c.updateCollectionWithPrsChange(path, false)
 }
 
 func (c *SolrMonitor) dataChanged(path string, data string, version int32) error {
