@@ -256,12 +256,26 @@ func (m *ZkWatcherMan) MonitorData(path string, recursive bool) error {
 		return err
 	}
 
-	if recursive { //fetch children recursively and notify callbacks //TODO should get stats and do it recursively!
-		children, _, err := m.zkCli.Children(path)
-		if err != nil {
-			return err
+	if recursive { //fetch children recursively and notify callbacks
+		m.fetchChildrenAndNotifyCallback(path, 1, 1) //TODO Only go first level for now
+	}
+	return nil
+}
+
+func (m *ZkWatcherMan) fetchChildrenAndNotifyCallback(path string, currentDepth, maxDepth int) error {
+	children, stat, err := m.zkCli.Children(path)
+	if err != nil {
+		return err
+	}
+	m.callbacks.ChildrenChanged(path, children)
+
+	if currentDepth < maxDepth && stat.NumChildren > 0 {
+		for _, child := range children {
+			err = m.fetchChildrenAndNotifyCallback(child, currentDepth+1, maxDepth)
+			if err != nil {
+				return err
+			}
 		}
-		m.callbacks.ChildrenChanged(path, children)
 	}
 	return nil
 }
