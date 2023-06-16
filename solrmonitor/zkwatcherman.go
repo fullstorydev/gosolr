@@ -26,8 +26,11 @@ import (
 type Callbacks interface {
 	ChildrenChanged(path string, children []string) error
 	DataChanged(path string, data string, stat *zk.Stat) error
+	PathAdded(path string) error
+	PathDeleted(path string) error
 	ShouldWatchChildren(path string) bool
 	ShouldWatchData(path string) bool
+	ShouldFetchData(path string) bool //whether we need to fetch the data from the node along with the stat, in some cases, knowing just the path and whether it's a deletion are good enough
 }
 
 // A MonitorChildren request whose last attempt to set a watch failed.
@@ -76,8 +79,16 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 	case zk.EventNodeCreated, zk.EventNodeDeleted:
 		// Just enqueue both kinds of tasks, we might throw one away later.
 		m.logger.Printf("ZkWatcherMan %s: %s", evt.Type, evt.Path)
-		m.enqueueDeferredTask(deferredDataTask{evt.Path})
-		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
+		if m.callbacks.ShouldFetchData(evt.Path) {
+			m.enqueueDeferredTask(deferredDataTask{evt.Path})
+			m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
+		} else { //all data watch are permanent, all we need to do is notify the callback
+			if evt.Type == zk.EventNodeCreated {
+				m.callbacks.PathAdded(evt.Path)
+			} else {
+				m.callbacks.PathDeleted(evt.Path)
+			}
+		}
 	case zk.EventNodeDataChanged:
 		m.logger.Printf("ZkWatcherMan data %s: %s", evt.Type, evt.Path)
 		m.enqueueDeferredTask(deferredDataTask{evt.Path})
@@ -266,7 +277,6 @@ func (m *ZkWatcherMan) fetchAndNotifyCallback(path string) error {
 
 	m.callbacks.DataChanged(path, data, stat)
 	return nil
-
 }
 
 func (m *ZkWatcherMan) StopMonitorData(path string) {

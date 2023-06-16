@@ -116,6 +116,14 @@ func (c callbacks) DataChanged(path string, data string, stat *zk.Stat) error {
 	return c.SolrMonitor.dataChanged(path, data, version)
 }
 
+func (c callbacks) PathAdded(path string) error {
+	return c.SolrMonitor.pathAdded(path)
+}
+
+func (c callbacks) PathDeleted(path string) error {
+	return c.SolrMonitor.pathDeleted(path)
+}
+
 func (c callbacks) ShouldWatchChildren(path string) bool {
 	return c.SolrMonitor.shouldWatchChildren(path)
 }
@@ -123,6 +131,10 @@ func (c callbacks) ShouldWatchChildren(path string) bool {
 func (c callbacks) ShouldWatchData(path string) bool {
 	// some paths, like "/clusterprops.json" we always want to watch, otherwise, see if we should watch that collection's path
 	return c.SolrMonitor.shouldWatchPath(path) || c.SolrMonitor.shouldWatchCollection(path)
+}
+
+func (c callbacks) ShouldFetchData(path string) bool {
+	return c.SolrMonitor.shouldFetchData(path)
 }
 
 func (c *SolrMonitor) Close() {
@@ -376,6 +388,30 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 	}
 }
 
+func (c *SolrMonitor) shouldFetchData(path string) bool {
+	//PRS update, we don't care about the data/stat
+	if c.isPrsPath(path) {
+		return false
+	}
+	return true
+}
+
+func (c *SolrMonitor) isPrsPath(path string) bool {
+	return strings.HasPrefix(path, c.solrRoot+collectionsPath) && strings.Contains(path, "/state.json/")
+}
+
+func (c *SolrMonitor) pathAdded(path string) error {
+	return c.updateCollectionWithPrsChange(path)
+}
+
+func (c *SolrMonitor) pathDeleted(path string) error {
+	//we can skip PRS entry deletion. By definition PRS entry deletion does NOT refer to
+	//deletion of the replica, but simply a temporary absence of such entry and should be follow up with another
+	//PRS entry creation.
+	//For replica deletion, it should be manifested as the state.json change itself.
+	return nil //TODO
+}
+
 func (c *SolrMonitor) dataChanged(path string, data string, version int32) error {
 	if strings.HasSuffix(path, rolesPath) {
 		return c.rolesChanged(data)
@@ -403,14 +439,8 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 		c.callSolrListener(coll.name, state)
 
 		//No need to start monitoring replica status, as the recursive watch on state.json is already doing that
-	} else if coll.isPRSEnabled() && strings.Contains(path, "/state.json/") { //change on PRS entry
-		//we can skip PRS entry deletion (version -1). By definition PRS entry deletion does NOT refer to
-		//deletion of the replica, but simply a temporary absence of such entry and should be follow up with another
-		//PRS entry creation.
-		//For replica deletion, it should be manifested as the state.json change itself.
-		if version > -1 {
-			c.updateCollectionWithPrsChange(path)
-		}
+	} else if coll.isPRSEnabled() && c.isPrsPath(path) { //change on PRS entry
+		return fmt.Errorf("unexpected data change on PRS entry: %s", path)
 	} else {
 		// less common (usually just initialization) collection change
 		state := coll.setCollectionData(data)
