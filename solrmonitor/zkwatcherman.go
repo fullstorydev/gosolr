@@ -65,9 +65,9 @@ type ZkWatcherMan struct {
 	deferredTaskMu        sync.Mutex    // guards deferredRecoveryTasks
 	deferredRecoveryTasks fifoTaskQueue
 
-	//on init fetch, how depth to fetch recursive child, 1 means fetch the immediate children and stop
-	//we need to store this as a field as we need this on re-connect
-	recursivePathDepths map[string]int
+	//on init fetch, the depth to fetch recursive child paths, 1 means fetch the immediate children and stop.
+	//This is necessary for re-connect
+	initFetchDepths map[string]int
 }
 
 // Create a ZkWatcherMan to continuously monitor nodes for state and data changes.
@@ -81,7 +81,7 @@ func NewZkWatcherMan(logger zk.Logger) *ZkWatcherMan {
 		cancel:                cancel,
 		logger:                logger,
 		deferredTasksNotEmpty: make(chan struct{}, 1),
-		recursivePathDepths:   make(map[string]int),
+		initFetchDepths:       make(map[string]int),
 	}
 	return ret
 }
@@ -265,8 +265,8 @@ func (m *ZkWatcherMan) MonitorData(path string) error {
 	return m.monitorData(path, 0)
 }
 
-func (m *ZkWatcherMan) MonitorDataRecursive(path string, depth int) error {
-	return m.monitorData(path, depth)
+func (m *ZkWatcherMan) MonitorDataRecursive(path string, initFetchDepth int) error {
+	return m.monitorData(path, initFetchDepth)
 }
 
 // MonitorData begins monitoring the data at the given path, will resolve the current data before returning.
@@ -278,9 +278,9 @@ func (m *ZkWatcherMan) MonitorDataRecursive(path string, depth int) error {
 // fetchDepth is only used when recursive is true, fetch children (and notify cbs) will only go up to this depth.
 // for example, if fetchDepth = 1, this will only fetch the immediate children of path,
 // notify via m.callbacks.ChildrenChanged and stop there
-func (m *ZkWatcherMan) monitorData(path string, recursiveDepth int) error {
-	if recursiveDepth > 0 { //keep track of this, as for disconnect, we need this piece of info to re-init the watch
-		m.recursivePathDepths[path] = recursiveDepth
+func (m *ZkWatcherMan) monitorData(path string, initFetchDepth int) error {
+	if initFetchDepth > 0 { //keep track of this, as for disconnect, we need this piece of info to re-init the watch
+		m.initFetchDepths[path] = initFetchDepth
 	}
 
 	zkErr, cbErr := m.initFetchData(path, true)
@@ -320,9 +320,9 @@ func (m *ZkWatcherMan) initFetchRecursively(path string, currentDepth, maxDepth 
 }
 
 // initFetchData first installs a persistent watch (if installWatch is true and fetch the data.
-// take note that this might fetch recursively on the children if recursivePathDepths is defined for such path
+// take note that this might fetch recursively on the children if initFetchDepths is defined for such path
 func (m *ZkWatcherMan) initFetchData(path string, installWatch bool) (zkErr, cbErr error) {
-	fetchDepth, isRecursive := m.recursivePathDepths[path]
+	fetchDepth, isRecursive := m.initFetchDepths[path]
 
 	//can ignore the returned channel as zkwatcherman relies on its EventCallback being wired up
 	//to the zk.Conn as a global callback option
@@ -393,7 +393,7 @@ func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
 
 func (m *ZkWatcherMan) StopMonitorData(path string) {
 	m.zkCli.RemoveAllPersistentWatches(path)
-	delete(m.recursivePathDepths, path)
+	delete(m.initFetchDepths, path)
 }
 
 // TODO flag on permanent or not
