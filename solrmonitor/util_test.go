@@ -1,6 +1,7 @@
 package solrmonitor
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -107,6 +108,23 @@ func prsShouldExist(t *testing.T, sm *SolrMonitor, name string, shard string, re
 	}
 
 	t.Fatalf("expected collection %s 's replica updated", name)
+}
+
+func checkFetchCount(t *testing.T, currentFetchCount *atomic.Int32, expectedFetchCount int32) {
+	t.Helper()
+	// Wait a moment before checking, otherwise it might not flag when there are too many fetches
+	time.Sleep(200 * time.Millisecond)
+	for end := time.Now().Add(checkTimeout); time.Now().Before(end); {
+		if currentFetchCount.Load() > expectedFetchCount {
+			t.Fatalf("fetch count %v exceeded expected count %v", currentFetchCount.Load(), expectedFetchCount)
+			return
+		}
+		if currentFetchCount.Load() == expectedFetchCount {
+			return
+		}
+		time.Sleep(checkInterval)
+	}
+	t.Fatalf("fetch count %v is not equal to expected count %v", currentFetchCount.Load(), expectedFetchCount)
 }
 
 func shouldNotExist(t *testing.T, sm *SolrMonitor, name string) {
