@@ -38,7 +38,7 @@ type testutil struct {
 	sm                        *SolrMonitor
 	logger                    *smtestutil.ZkTestLogger
 	solrEventListener         *SEListener
-	collectionStateFetchCount *atomic.Int32
+	collectionStateFetchCount *int32
 }
 
 func (tu *testutil) teardown() {
@@ -88,10 +88,10 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		collectionStates: make(map[string]*CollectionState),
 	}
 
-	collectionStateFetchCount := &atomic.Int32{}
+	collectionStateFetchCount := int32(0)
 	proxyZkClient := &proxyZkCli{
 		delegate:                  conn,
-		collectionStateFetchCount: collectionStateFetchCount,
+		collectionStateFetchCount: &collectionStateFetchCount,
 	}
 
 	sm, err := NewSolrMonitorWithRoot(proxyZkClient, watcher, logger, root, l)
@@ -106,7 +106,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		sm:                        sm,
 		logger:                    logger,
 		solrEventListener:         l,
-		collectionStateFetchCount: collectionStateFetchCount,
+		collectionStateFetchCount: &collectionStateFetchCount,
 	}
 }
 
@@ -357,13 +357,13 @@ func TestPRSProtocol(t *testing.T) {
 	logger := smtestutil.NewZkTestLogger(t)
 	watcher := NewZkWatcherMan(logger)
 	connOption := func(c *zk.Conn) { c.SetLogger(logger) }
-	fetchCount := &atomic.Int32{}
+	fetchCount := int32(0)
 
 	conn, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption, zk.WithEventCallback(watcher.EventCallback))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sm, err = NewSolrMonitorWithRoot(&proxyZkCli{conn, fetchCount}, watcher, logger, sm.solrRoot, nil) //make a new solrmonitor
+	sm, err = NewSolrMonitorWithRoot(&proxyZkCli{conn, &fetchCount}, watcher, logger, sm.solrRoot, nil) //make a new solrmonitor
 	if err != nil {
 		conn.Close()
 		t.Fatal(err)
@@ -389,7 +389,7 @@ func TestPRSProtocol(t *testing.T) {
 	if collState.Shards["shard_1_1"].Replicas["R1_1"].State != "active" {
 		t.Fatalf("Expected replica R1_1 state active, but it's not")
 	}
-	checkFetchCount(t, fetchCount, 2) //state.json fetch and 1 children fetch on PRS from coll.start()
+	checkFetchCount(t, &fetchCount, 2) //state.json fetch and 1 children fetch on PRS from coll.start()
 }
 
 func checkCollectionStateCallback(t *testing.T, expected int, found int) {
@@ -462,35 +462,35 @@ func (l *SEListener) SolrClusterPropsChanged(clusterprops map[string]string) {
 // proxyZkCli to ensure the zk collection state fetch count is as expected
 type proxyZkCli struct {
 	delegate                  ZkCli
-	collectionStateFetchCount *atomic.Int32 //fetches on collection state.json including PRS entries
+	collectionStateFetchCount *int32 //fetches on collection state.json including PRS entries
 }
 
 var _ ZkCli = &proxyZkCli{}
 
 func (p *proxyZkCli) Children(path string) ([]string, *zk.Stat, error) {
 	if strings.Contains(path, "/state.json") {
-		p.collectionStateFetchCount.Add(1)
+		atomic.AddInt32(p.collectionStateFetchCount, 1)
 	}
 	return p.delegate.Children(path)
 }
 
 func (p *proxyZkCli) ChildrenW(path string) ([]string, *zk.Stat, <-chan zk.Event, error) {
 	if strings.Contains(path, "/state.json") {
-		p.collectionStateFetchCount.Add(1)
+		atomic.AddInt32(p.collectionStateFetchCount, 1)
 	}
 	return p.delegate.ChildrenW(path)
 }
 
 func (p *proxyZkCli) Get(path string) ([]byte, *zk.Stat, error) {
 	if strings.Contains(path, "/state.json") {
-		p.collectionStateFetchCount.Add(1)
+		atomic.AddInt32(p.collectionStateFetchCount, 1)
 	}
 	return p.delegate.Get(path)
 }
 
 func (p *proxyZkCli) GetW(path string) ([]byte, *zk.Stat, <-chan zk.Event, error) {
 	if strings.Contains(path, "/state.json") {
-		p.collectionStateFetchCount.Add(1)
+		atomic.AddInt32(p.collectionStateFetchCount, 1)
 	}
 	return p.delegate.GetW(path)
 }
