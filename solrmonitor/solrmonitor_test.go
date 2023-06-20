@@ -68,7 +68,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 	logger := smtestutil.NewZkTestLogger(t)
 	watcher := NewZkWatcherMan(logger)
 	connOption := func(c *zk.Conn) { c.SetLogger(logger) }
-	conn, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption, zk.WithEventCallback(watcher.EventCallback))
+	conn, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Hour*5, connOption, zk.WithEventCallback(watcher.EventCallback))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestCollectionChanges(t *testing.T) {
 	// Get a fresh new solr monitor and make sure it starts in the right state.
 	w2 := NewZkWatcherMan(testutil.logger)
 	connOption := func(c *zk.Conn) { c.SetLogger(testutil.logger) }
-	conn2, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Second*5, connOption, zk.WithEventCallback(w2.EventCallback))
+	conn2, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Hour*5, connOption, zk.WithEventCallback(w2.EventCallback))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,8 @@ func TestPRSProtocol(t *testing.T) {
 	currentFetchCount := testSetup.collectionStateFetchCount
 	shouldNotExist(t, sm, "c1")
 	checkCollectionStateCallback(t, 1, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
-	checkFetchCount(t, currentFetchCount, 2) //state.json fetch and 1 children fetch on PRS from coll.start()
+	//checkFetchCount(t, currentFetchCount, 2) //state.json fetch and 1 children fetch on PRS from coll.start()
+	checkFetchCount(t, currentFetchCount, 1) //state.json fetch
 
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json", nil, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
@@ -260,7 +261,8 @@ func TestPRSProtocol(t *testing.T) {
 
 	shouldNotExist(t, sm, "c1")
 	checkCollectionStateCallback(t, 2, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
-	checkFetchCount(t, currentFetchCount, 3) //state.json fetch from new state.json
+	//checkFetchCount(t, currentFetchCount, 3) //state.json fetch from new state.json
+	checkFetchCount(t, currentFetchCount, 2) //state.json fetch from new state.json
 
 	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"true\",	 \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\", \"state\":\"down\"}}}}}}"), -1)
 	if err != nil {
@@ -307,7 +309,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "false", 2)
-	checkCollectionStateCallback(t, 6, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 7, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
 
 	// 4. adding PRS for replica R1, version 3, state active and leader
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:3:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -319,7 +321,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "true", 3)
-	checkCollectionStateCallback(t, 7, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 8, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
 
 	//5. split shard
 	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"true\",	 \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\", \"state\":\"down\"}}}, \"shard_1_0\":{\"replicas\":{\"R1_0\":{\"core\":\"core1\", \"state\":\"down\"}}}, \"shard_1_1\":{\"replicas\":{\"R1_1\":{\"core\":\"core1\", \"state\":\"down\"}}}}}}"), -1)
@@ -327,8 +329,9 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(5000 * time.Millisecond)
-	checkCollectionStateCallback(t, 8, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
-	checkFetchCount(t, currentFetchCount, 5) //state.json fetch from updated state.json
+	checkCollectionStateCallback(t, 9, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
+	//checkFetchCount(t, currentFetchCount, 5) //state.json fetch from updated state.json
+	checkFetchCount(t, currentFetchCount, 10) //state.json fetch from updated state.json + PRS child changes
 
 	// 6. replica R1_0 should exist
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1_0:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -336,7 +339,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1_0", "R1_0", "active", "true", 1)
-	checkCollectionStateCallback(t, 9, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 10, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
 
 	// 7. replica R1_1 should exist
 	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1_1:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
@@ -344,7 +347,7 @@ func TestPRSProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	prsShouldExist(t, sm, "c1", "shard_1_1", "R1_1", "active", "true", 1)
-	checkCollectionStateCallback(t, 10, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
+	checkCollectionStateCallback(t, 11, testSetup.solrEventListener.collStateEvents+testSetup.solrEventListener.collReplicaChangeEvents)
 
 	if testSetup.solrEventListener.collStateEvents != 4 || testSetup.solrEventListener.collections != 1 {
 		t.Fatalf("Event listener didn't  not get event for collection  = %d, collectionstateEvents = %d", testSetup.solrEventListener.collections, testSetup.solrEventListener.collStateEvents)

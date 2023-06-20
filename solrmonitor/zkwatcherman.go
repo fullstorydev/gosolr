@@ -29,9 +29,13 @@ type Callbacks interface {
 	ShouldWatchChildren(path string) bool
 	ShouldWatchData(path string) bool
 
-	//ShouldFetchData indicates on DataChanged, whether we need to fetch the data from the node along with the stat,
-	//in some cases knowing just the path and whether it's a creation/deletion are good enough
+	//ShouldFetchData indicates on DataChanged triggered by zk.EventNodeCreated or zk.EventNodeDeleted,
+	//whether we need to fetch the data from the node along with the stat.
+	//In some cases knowing just the path created/deleted is good enough
 	//If this is false, DataChanged will be notified with data "" and stat with version -1 as deletion or 1 as creation
+	//Take note that, we still always fetches the data (ignore this flag) if:
+	//1. ZkWatcherMan.usePersistentWatch is false OR
+	//2. zk.EventNodeDataChanged triggers
 	ShouldFetchData(path string) bool
 }
 
@@ -65,6 +69,8 @@ type ZkWatcherMan struct {
 	deferredTaskMu        sync.Mutex    // guards deferredRecoveryTasks
 	deferredRecoveryTasks fifoTaskQueue
 
+	usePersistentWatch bool
+
 	//on init fetch, the depth to fetch recursive child paths, 1 means fetch the immediate children and stop.
 	//This is necessary for re-connect
 	initFetchDepths map[string]int
@@ -93,10 +99,10 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 	case zk.EventNodeCreated, zk.EventNodeDeleted:
 		// Just enqueue both kinds of tasks, we might throw one away later.
 		m.logger.Printf("ZkWatcherMan %s: %s", evt.Type, evt.Path)
-		if m.callbacks.ShouldFetchData(evt.Path) {
+		if !m.usePersistentWatch || m.callbacks.ShouldFetchData(evt.Path) {
 			m.enqueueDeferredTask(deferredDataTask{evt.Path})
 			m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
-		} else { //all data watches are persistent, all we need to do is notify the callback
+		} else { //persistent data watch, all we need to do is notify the callback
 			if evt.Type == zk.EventNodeCreated {
 				m.callbacks.DataChanged(evt.Path, "", &zk.Stat{Version: 1})
 			} else {
@@ -112,7 +118,11 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 	case zk.EventNotWatching:
 		// Lost ZK session; we'll need to re-register all watches when it comes back.
 		// Just enqueue both kinds of tasks, we might throw them away later.
-		m.enqueueDeferredTask(deferredInitDataTask{evt.Path, true})
+		if m.usePersistentWatch {
+			m.enqueueDeferredTask(deferredInitDataTask{evt.Path, true})
+		} else {
+			m.enqueueDeferredTask(deferredDataTask{evt.Path})
+		}
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	default:
 		if evt.Err == zk.ErrClosing {
@@ -279,15 +289,23 @@ func (m *ZkWatcherMan) MonitorDataRecursive(path string, initFetchDepth int) err
 // for example, if fetchDepth = 1, this will only fetch the immediate children of path,
 // notify via m.callbacks.ChildrenChanged and stop there
 func (m *ZkWatcherMan) monitorData(path string, initFetchDepth int) error {
-	if initFetchDepth > 0 { //keep track of this, as for disconnect, we need this piece of info to re-init the watch
-		m.initFetchDepths[path] = initFetchDepth
-	}
+	if m.usePersistentWatch {
+		if initFetchDepth > 0 { //keep track of this, as for disconnect, we need this piece of info to re-init the watch
+			m.initFetchDepths[path] = initFetchDepth
+		}
 
-	zkErr, cbErr := m.initFetchData(path, true)
-	if zkErr != nil {
-		return zkErr
+		zkErr, cbErr := m.initFetchData(path, true)
+		if zkErr != nil {
+			return zkErr
+		}
+		return cbErr
+	} else {
+		zkErr, cbErr := m.fetchData(path)
+		if zkErr != nil {
+			return zkErr
+		}
+		return cbErr
 	}
-	return cbErr
 }
 
 func (m *ZkWatcherMan) initFetchRecursively(path string, currentDepth, maxDepth int) (zkErr, cbErr error) {
@@ -372,7 +390,15 @@ func (m *ZkWatcherMan) initFetchData(path string, installWatch bool) (zkErr, cbE
 // Take note that if such path does not exist, it will still notify the callbacks
 // with empty ""
 func (m *ZkWatcherMan) fetchData(path string) (zkErr, cbErr error) {
-	dataBytes, stat, err := m.zkCli.Get(path)
+	var dataBytes []byte
+	var stat *zk.Stat
+	var err error
+	if !m.usePersistentWatch {
+		dataBytes, stat, _, err = getDataAndWatch(m.zkCli, path)
+	} else {
+		dataBytes, stat, err = m.zkCli.Get(path)
+	}
+
 	if err == zk.ErrClosing { //if closing simply return nil and do nothing
 		return nil, nil
 	}
@@ -421,6 +447,32 @@ func getChildrenAndWatch(zkCli ZkCli, path string) ([]string, <-chan zk.Event, e
 		}
 
 		return nil, nil, err
+	}
+}
+
+func getDataAndWatch(zkCli ZkCli, path string) ([]byte, *zk.Stat, <-chan zk.Event, error) {
+	for {
+		data, stat, dataWatch, err := zkCli.GetW(path)
+		if err == nil {
+			// Success, we're done.
+			return data, stat, dataWatch, nil
+		}
+
+		if err == zk.ErrNoNode {
+			// Node doesn't exist; add an existence watch.
+			exists, _, existsWatch, err := zkCli.ExistsW(path)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if exists {
+				// Improbable, but possible; first we checked and it wasn't there, then we checked and it was.
+				// Just loop and try again.
+				continue
+			}
+			return nil, nil, existsWatch, nil
+		}
+
+		return nil, nil, nil, err
 	}
 }
 
