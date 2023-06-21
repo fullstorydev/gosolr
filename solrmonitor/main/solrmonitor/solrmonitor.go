@@ -237,3 +237,24 @@ func (s *sexPantherZkCli) State() zk.State {
 func (s *sexPantherZkCli) Close() {
 	s.delegate.Close()
 }
+
+func (s *sexPantherZkCli) Children(path string) ([]string, *zk.Stat, error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return nil, nil, errors.New("flaky error")
+	}
+	return s.delegate.Children(path)
+}
+
+func (s *sexPantherZkCli) AddPersistentWatch(path string, mode zk.AddWatchMode) (ch zk.EventQueue, err error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return nil, errors.New("flaky error")
+	}
+	return s.delegate.AddPersistentWatch(path, mode)
+}
+
+func (s *sexPantherZkCli) RemoveAllPersistentWatches(path string) (err error) {
+	if s.isFlaky() && s.rnd.Float32() > flakeChance {
+		return errors.New("flaky error")
+	}
+	return s.delegate.RemoveAllPersistentWatches(path)
+}
