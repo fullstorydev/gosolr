@@ -42,7 +42,8 @@ type deferredChildrenTask struct {
 
 // A MonitorData request whose last attempt to set a watch failed.
 type deferredDataTask struct {
-	path string
+	path      string
+	eventType zk.EventType
 }
 
 // Init on a data path, which optionally install a persistent watch and
@@ -93,19 +94,11 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 	case zk.EventNodeCreated, zk.EventNodeDeleted:
 		// Just enqueue both kinds of tasks, we might throw one away later.
 		m.logger.Printf("ZkWatcherMan %s: %s", evt.Type, evt.Path)
-		if m.callbacks.ShouldFetchData(evt.Path) {
-			m.enqueueDeferredTask(deferredDataTask{evt.Path})
-			m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
-		} else { //all data watches are persistent, all we need to do is notify the callback
-			if evt.Type == zk.EventNodeCreated {
-				m.callbacks.DataChanged(evt.Path, "", &zk.Stat{Version: 1})
-			} else {
-				m.callbacks.DataChanged(evt.Path, "", &zk.Stat{Version: -1})
-			}
-		}
+		m.enqueueDeferredTask(deferredDataTask{evt.Path, evt.Type})
+		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	case zk.EventNodeDataChanged:
 		m.logger.Printf("ZkWatcherMan data %s: %s", evt.Type, evt.Path)
-		m.enqueueDeferredTask(deferredDataTask{evt.Path})
+		m.enqueueDeferredTask(deferredDataTask{evt.Path, evt.Type})
 	case zk.EventNodeChildrenChanged:
 		m.logger.Printf("ZkWatcherMan children %s: %s", evt.Type, evt.Path)
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
@@ -180,13 +173,21 @@ func (m *ZkWatcherMan) Start(zkCli ZkCli, callbacks Callbacks) {
 						}
 					case deferredDataTask:
 						if callbacks.ShouldWatchData(task.path) {
-							zkErr, cbErr := m.fetchData(task.path)
-							if zkErr != nil {
-								m.logger.Printf("zkwatcherman: error fetching data for %s: %s", task.path, zkErr)
-							} else if cbErr != nil {
-								m.logger.Printf("zkwatcherman: error in data callback for %s: %s", task.path, zkErr)
+							if m.callbacks.ShouldFetchData(task.path) {
+								zkErr, cbErr := m.fetchData(task.path)
+								if zkErr != nil {
+									m.logger.Printf("zkwatcherman: error fetching data for %s: %s", task.path, zkErr)
+								} else if cbErr != nil {
+									m.logger.Printf("zkwatcherman: error in data callback for %s: %s", task.path, zkErr)
+								}
+								success = zkErr == nil
+							} else { //all data watches are persistent, all we need to do is notify the callback
+								if task.eventType == zk.EventNodeCreated {
+									m.callbacks.DataChanged(task.path, "", &zk.Stat{Version: 1})
+								} else {
+									m.callbacks.DataChanged(task.path, "", &zk.Stat{Version: -1})
+								}
 							}
-							success = zkErr == nil
 						}
 					case deferredInitDataTask:
 						if callbacks.ShouldWatchData(task.path) {
