@@ -156,6 +156,24 @@ func (c *SolrMonitor) GetCollectionState(name string) (*CollectionState, error) 
 	return c.doGetCollectionState(name)
 }
 
+func (c *SolrMonitor) InvalidateCollectionState(name string) error {
+	if coll := c.getCollection(name); coll != nil {
+		return coll.start()
+	}
+
+	return errors.New(fmt.Sprintf("collection not found %s ", name))
+}
+
+func (c *SolrMonitor) getCollection(name string) *collection {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if coll, found := c.collections[name]; found {
+		return coll
+	}
+
+	return nil
+}
+
 func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error) {
 	coll := c.collections[name]
 
@@ -673,6 +691,7 @@ func parseStateData(name string, data []byte, version int32) (*CollectionState, 
 }
 
 func (coll *collection) start() error {
+	coll.isWatched = false
 	collPath := coll.parent.solrRoot + "/collections/" + coll.name
 	statePath := collPath + "/state.json"
 	if err := coll.parent.zkWatcher.MonitorData(collPath); err != nil {

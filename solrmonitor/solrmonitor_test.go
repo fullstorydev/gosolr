@@ -325,6 +325,21 @@ func TestPRSProtocol(t *testing.T) {
 
 	// and after all of the updates, should still exist with same config name
 	shouldExist(t, sm, "c1", collectionAssertions)
+
+	ref1, e1 := sm.GetCollectionState("c1")
+
+	// forcing collection re-fetched
+	e2 := sm.InvalidateCollectionState("c1")
+	if e2 != nil {
+		t.Fatalf("Unable to invalidate the collection %s", e2.Error())
+	}
+
+	ref2, e3 := sm.GetCollectionState("c1")
+
+	// making sure collection reference are different
+	if e1 != nil || e3 != nil || ref1 == ref2 {
+		t.Fatalf("Collection ref is same or error e1: %s, e3:%s", e1.Error(), e3.Error())
+	}
 }
 
 func checkCollectionStateCallback(t *testing.T, expected int, found int) {
