@@ -288,7 +288,7 @@ func (c *SolrMonitor) updateCollection(path string, children []string) error {
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) (map[string]*PerReplicaState, error) {
-	c.logger.Printf("updateCollectionState: path %s, children %d", path, len(children))
+	c.logger.Printf("updateCollectionState with PRS: path %s, children %d", path, len(children))
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
@@ -343,19 +343,37 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) (map
 
 		rmap[prs.Name] = prs
 	}
-	c.logger.Printf("updateCollectionState on collection %s: updating prs state %s", coll.name, rmap)
+	c.logger.Printf("updateCollectionState on collection %s: updating prs state %d", coll.name, len(rmap))
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
 	//update the collection state based on new PRS (per replica state)
+	prsUpdateCount := 0
 	for _, shard := range coll.collectionState.Shards {
 		for rname, rstate := range shard.Replicas {
 			if prs, found := rmap[rname]; found {
+				prsUpdateCount++
 				if prs.Version < rstate.Version {
 					c.logger.Printf("WARNING: PRS update with lower version than received previously. Existing: %v, Update: %v", rstate, prs)
 				}
 				rstate.Version = prs.Version
 				rstate.Leader = prs.Leader
 				rstate.State = prs.State
+			}
+		}
+	}
+
+	if prsUpdateCount < len(rmap) {
+		c.logger.Printf("All prs entries not updated for collection %s", coll.name)
+		replicaVsShard := map[string]string{}
+		for shardName, shardState := range coll.collectionState.Shards {
+			for replicaName, _ := range shardState.Replicas {
+				replicaVsShard[replicaName] = shardName
+			}
+		}
+
+		for replica, _ := range rmap {
+			if _, found := replicaVsShard[replica]; !found {
+				c.logger.Printf("For Collection %s, prs update for replica %s, shard is missing", coll.name, replica)
 			}
 		}
 	}
@@ -691,7 +709,7 @@ func (coll *collection) setCollectionData(data string) *CollectionState {
 }
 
 func (coll *collection) setStateData(data string, version int32) *CollectionState {
-	coll.parent.logger.Printf("setStateData:updating the collection %s ", coll.name)
+	coll.parent.logger.Printf("setStateData:updating the collection state.json %s ", coll.name)
 	if data == "" {
 		coll.parent.logger.Printf("setStateData: no data for %s", coll.name)
 	}
