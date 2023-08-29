@@ -1,7 +1,6 @@
 package solrmonitor
 
 /*
-*
 The client can register the SolrEventListener to listen to the solr cluster state events from the zookeeper.
 
 On startup, the events are fired in this order:
@@ -15,16 +14,23 @@ On startup, the events are fired in this order:
  4. SolrClusterPropsChanged fires for the single clusterprops file
 
 After initialization it delivers events for following condition
+
  1. SolrLiveNodesChanged if solr live nodes changes
+
  2. SolrQueryNodesChanged if solr query node changes
+
  3. SolrCollectionsChanged if number of collections changes in solr cluster
+
  4. SolrCollectionStateChanged if collection's number of shards changes, or replica moves, or replica splits.
+
  5. SolrCollectionReplicaStatesChanged if collection's replica goes up/down, or becomes leader
+
  6. SolrClusterPropsChanged if the cluster props are modified
 
  4. If collection get deleted - for non PRS
     4.1 SolrCollectionStateChanged fires for collection's state.json, which get updated for each shard/replica
     4.2	SolrCollectionStateChanged fires with all collections name except deleted collection.
+
  5. If collection get deleted - for PRS
     5.1 following events happen
     5.1.1 SolrCollectionStateChanged fires for collection's base state.json

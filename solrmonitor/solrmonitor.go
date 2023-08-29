@@ -156,6 +156,24 @@ func (c *SolrMonitor) GetCollectionState(name string) (*CollectionState, error) 
 	return c.doGetCollectionState(name)
 }
 
+func (c *SolrMonitor) InvalidateCollectionState(name string) error {
+	if coll := c.getCollection(name); coll != nil {
+		return coll.start()
+	}
+
+	return errors.New(fmt.Sprintf("collection not found %s ", name))
+}
+
+func (c *SolrMonitor) getCollection(name string) *collection {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if coll, found := c.collections[name]; found {
+		return coll
+	}
+
+	return nil
+}
+
 func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error) {
 	coll := c.collections[name]
 
@@ -288,7 +306,7 @@ func (c *SolrMonitor) updateCollection(path string, children []string) error {
 }
 
 func (c *SolrMonitor) updateCollectionState(path string, children []string) (map[string]*PerReplicaState, error) {
-	c.logger.Printf("updateCollectionState: path %s, children %d", path, len(children))
+	c.logger.Printf("updateCollectionState with PRS: path %s, children %d", path, len(children))
 	coll := c.getCollFromPath(path)
 	if coll == nil || len(children) == 0 {
 		//looks like we have not got the collection event yet; it  should be safe to ignore it
@@ -343,19 +361,37 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) (map
 
 		rmap[prs.Name] = prs
 	}
-	c.logger.Printf("updateCollectionState on collection %s: updating prs state %s", coll.name, rmap)
+	c.logger.Printf("updateCollectionState on collection %s: updating prs state %d", coll.name, len(rmap))
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
 	//update the collection state based on new PRS (per replica state)
+	prsUpdateCount := 0
 	for _, shard := range coll.collectionState.Shards {
 		for rname, rstate := range shard.Replicas {
 			if prs, found := rmap[rname]; found {
+				prsUpdateCount++
 				if prs.Version < rstate.Version {
 					c.logger.Printf("WARNING: PRS update with lower version than received previously. Existing: %v, Update: %v", rstate, prs)
 				}
 				rstate.Version = prs.Version
 				rstate.Leader = prs.Leader
 				rstate.State = prs.State
+			}
+		}
+	}
+
+	if prsUpdateCount < len(rmap) {
+		c.logger.Printf("All prs entries not updated for collection %s", coll.name)
+		replicaVsShard := map[string]string{}
+		for shardName, shardState := range coll.collectionState.Shards {
+			for replicaName := range shardState.Replicas {
+				replicaVsShard[replicaName] = shardName
+			}
+		}
+
+		for replica := range rmap {
+			if _, found := replicaVsShard[replica]; !found {
+				c.logger.Printf("For Collection %s, prs update for replica %s, shard is missing", coll.name, replica)
 			}
 		}
 	}
@@ -655,6 +691,7 @@ func parseStateData(name string, data []byte, version int32) (*CollectionState, 
 }
 
 func (coll *collection) start() error {
+	coll.setWatch(false)
 	collPath := coll.parent.solrRoot + "/collections/" + coll.name
 	statePath := collPath + "/state.json"
 	if err := coll.parent.zkWatcher.MonitorData(collPath); err != nil {
@@ -691,7 +728,7 @@ func (coll *collection) setCollectionData(data string) *CollectionState {
 }
 
 func (coll *collection) setStateData(data string, version int32) *CollectionState {
-	coll.parent.logger.Printf("setStateData:updating the collection %s ", coll.name)
+	coll.parent.logger.Printf("setStateData:updating the collection state.json %s ", coll.name)
 	if data == "" {
 		coll.parent.logger.Printf("setStateData: no data for %s", coll.name)
 	}
@@ -751,15 +788,15 @@ func (coll *collection) startMonitoringReplicaStatus() {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
 			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
-			coll.watchAdded()
+			coll.setWatch(true)
 		}
 	}
 }
 
-func (coll *collection) watchAdded() {
+func (coll *collection) setWatch(watch bool) {
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
-	coll.isWatched = true
+	coll.isWatched = watch
 }
 
 func (coll *collection) hasWatch() bool {
