@@ -384,12 +384,12 @@ func (c *SolrMonitor) updateCollectionState(path string, children []string) (map
 		c.logger.Printf("All prs entries not updated for collection %s", coll.name)
 		replicaVsShard := map[string]string{}
 		for shardName, shardState := range coll.collectionState.Shards {
-			for replicaName, _ := range shardState.Replicas {
+			for replicaName := range shardState.Replicas {
 				replicaVsShard[replicaName] = shardName
 			}
 		}
 
-		for replica, _ := range rmap {
+		for replica := range rmap {
 			if _, found := replicaVsShard[replica]; !found {
 				c.logger.Printf("For Collection %s, prs update for replica %s, shard is missing", coll.name, replica)
 			}
