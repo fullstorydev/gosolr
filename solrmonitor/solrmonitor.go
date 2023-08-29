@@ -691,7 +691,7 @@ func parseStateData(name string, data []byte, version int32) (*CollectionState, 
 }
 
 func (coll *collection) start() error {
-	coll.isWatched = false
+	coll.setWatch(false)
 	collPath := coll.parent.solrRoot + "/collections/" + coll.name
 	statePath := collPath + "/state.json"
 	if err := coll.parent.zkWatcher.MonitorData(collPath); err != nil {
@@ -788,15 +788,15 @@ func (coll *collection) startMonitoringReplicaStatus() {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
 			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
-			coll.watchAdded()
+			coll.setWatch(true)
 		}
 	}
 }
 
-func (coll *collection) watchAdded() {
+func (coll *collection) setWatch(watch bool) {
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
-	coll.isWatched = true
+	coll.isWatched = watch
 }
 
 func (coll *collection) hasWatch() bool {
