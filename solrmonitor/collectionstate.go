@@ -32,7 +32,7 @@ type CollectionState struct {
 }
 
 func (cs *CollectionState) String() string {
-	return fmt.Sprintf("CollectionState\n{Shards:%+v, PerReplicaState:%s}\n", cs.Shards, true)
+	return fmt.Sprintf("CollectionState\n{Shards:%+v}\n", cs.Shards)
 }
 
 func (cs *CollectionState) isPRSEnabled() bool {
