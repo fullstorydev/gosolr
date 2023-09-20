@@ -80,7 +80,7 @@ func prsShouldExist(t *testing.T, sm *SolrMonitor, name string, shard string, re
 				continue
 			}
 
-			if !val.isPRSEnabled() {
+			if !val.IsPRSEnabled() {
 				t.Errorf("expected collection %s to be PRS", name)
 				continue
 			}

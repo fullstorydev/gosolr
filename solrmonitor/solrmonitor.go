@@ -752,7 +752,7 @@ func (coll *collection) setStateData(data string, version int32) *CollectionStat
 }
 
 func (coll *collection) updateReplicaVersionAndState(newState *CollectionState, oldState *CollectionState) {
-	if oldState == nil || newState == nil || !newState.isPRSEnabled() {
+	if oldState == nil || newState == nil || !newState.IsPRSEnabled() {
 		return
 	}
 	for shradName, newShardState := range newState.Shards {
@@ -808,5 +808,5 @@ func (coll *collection) hasWatch() bool {
 func (coll *collection) isPRSEnabled() bool {
 	coll.mu.RLock()
 	defer coll.mu.RUnlock()
-	return coll.collectionState != nil && coll.collectionState.isPRSEnabled()
+	return coll.collectionState != nil && coll.collectionState.IsPRSEnabled()
 }

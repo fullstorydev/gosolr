@@ -35,7 +35,7 @@ func (cs *CollectionState) String() string {
 	return fmt.Sprintf("CollectionState\n{Shards:%+v}\n", cs.Shards)
 }
 
-func (cs *CollectionState) isPRSEnabled() bool {
+func (cs *CollectionState) IsPRSEnabled() bool {
 	return true
 }
 
