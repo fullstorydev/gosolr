@@ -17,12 +17,11 @@ package solrmonitor
 import "fmt"
 
 type CollectionState struct {
-	Shards            map[string]*ShardState `json:"shards"`            // map from shard name to shard state
-	ReplicationFactor string                 `json:"replicationFactor"` // e.g. "1" (yes, these are strings, not numbers)
-	Router            Router                 `json:"router"`            // e.g. {"name":"compositeId"}
-	MaxShardsPerNode  string                 `json:"maxShardsPerNode"`  // e.g. "1" (yes, these are strings, not numbers)
-	AutoAddReplicas   string                 `json:"autoAddReplicas"`   // e.g. "false" (yes, these are strings, not bools)
-	PerReplicaState   string                 `json:"perReplicaState"`   // whether collection keeps state for each replica separately
+	Shards           map[string]*ShardState `json:"shards"`           // map from shard name to shard state
+	Router           Router                 `json:"router"`           // e.g. {"name":"compositeId"}
+	MaxShardsPerNode string                 `json:"maxShardsPerNode"` // e.g. "1" (yes, these are strings, not numbers)
+	AutoAddReplicas  string                 `json:"autoAddReplicas"`  // e.g. "false" (yes, these are strings, not bools)
+	PerReplicaState  string                 `json:"perReplicaState"`  // whether collection keeps state for each replica separately
 
 	// These following fields are set manually, not from state.json in Zookeeper.
 
