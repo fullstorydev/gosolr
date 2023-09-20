@@ -21,7 +21,6 @@ type CollectionState struct {
 	Router           Router                 `json:"router"`           // e.g. {"name":"compositeId"}
 	MaxShardsPerNode string                 `json:"maxShardsPerNode"` // e.g. "1" (yes, these are strings, not numbers)
 	AutoAddReplicas  string                 `json:"autoAddReplicas"`  // e.g. "false" (yes, these are strings, not bools)
-	PerReplicaState  bool                   `json:"perReplicaState"`  // whether collection keeps state for each replica separately
 
 	// These following fields are set manually, not from state.json in Zookeeper.
 
@@ -33,11 +32,11 @@ type CollectionState struct {
 }
 
 func (cs *CollectionState) String() string {
-	return fmt.Sprintf("CollectionState\n{Shards:%+v, PerReplicaState:%s}\n", cs.Shards, cs.PerReplicaState)
+	return fmt.Sprintf("CollectionState\n{Shards:%+v, PerReplicaState:%s}\n", cs.Shards, true)
 }
 
 func (cs *CollectionState) isPRSEnabled() bool {
-	return cs.PerReplicaState
+	return true
 }
 
 // zkCollectionState is used to parse top level collection zk nodes.
