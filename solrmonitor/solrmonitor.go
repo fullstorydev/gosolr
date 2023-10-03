@@ -32,14 +32,16 @@ const (
 	liveQueryNodesPath = "/live_query_nodes"
 	rolesPath          = "/roles.json"
 	clusterPropsPath   = "/clusterprops.json"
+	sysColPrefix       = ".sys."
 )
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
 type SolrMonitor struct {
-	logger    zk.Logger // where to debug log
-	zkCli     ZkCli     // the ZK client
-	solrRoot  string    // e.g. "/solr"
-	zkWatcher *ZkWatcherMan
+	logger        zk.Logger // where to debug log
+	zkCli         ZkCli     // the ZK client
+	solrRoot      string    // e.g. "/solr"
+	includeSysCol bool      // whether to include or ignore system collection with prefix .sys., for example .sys.COORDINATOR-COLL-_FS7
+	zkWatcher     *ZkWatcherMan
 
 	mu                sync.RWMutex
 	collections       map[string]*collection // map of all currently-known collections
@@ -72,17 +74,18 @@ func NewSolrMonitor(zkCli ZkCli, zkWatcher *ZkWatcherMan) (*SolrMonitor, error) 
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
 func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrEventListener SolrEventListener) (*SolrMonitor, error) {
-	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr", solrEventListener)
+	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr", false, solrEventListener)
 }
 
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
-func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrRoot string, solrEventListener SolrEventListener) (*SolrMonitor, error) {
+func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrRoot string, includeSysCol bool, solrEventListener SolrEventListener) (*SolrMonitor, error) {
 	c := &SolrMonitor{
 		logger:            logger,
 		zkCli:             zkCli,
 		solrRoot:          solrRoot,
+		includeSysCol:     includeSysCol,
 		zkWatcher:         zkWatcher,
 		collections:       make(map[string]*collection),
 		solrEventListener: solrEventListener,
@@ -228,6 +231,15 @@ func (c *SolrMonitor) GetClusterProps() (map[string]string, error) {
 func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	switch path {
 	case c.solrRoot + collectionsPath:
+		if !c.includeSysCol {
+			var filtered []string
+			for _, child := range children {
+				if !strings.HasPrefix(child, sysColPrefix) {
+					filtered = append(filtered, child)
+				}
+			}
+			children = filtered
+		}
 		return c.updateCollections(children)
 	case c.solrRoot + liveNodesPath:
 		return c.updateLiveNodes(children)
@@ -438,6 +450,10 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	if coll == nil {
 		// Always require a collection!
 		return fmt.Errorf("unknown dataChanged: %s", path)
+	} else if !c.includeSysCol && strings.HasPrefix(coll.name, sysColPrefix) {
+		//then ignore this change, might not be necessary as such collection is already filtered out
+		//at childrenChanged on the collections node, but just to play safe here...
+		return nil
 	}
 
 	if strings.HasSuffix(path, "/state.json") {
