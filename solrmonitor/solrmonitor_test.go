@@ -85,7 +85,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		collStateEvents:  0,
 		collectionStates: make(map[string]*CollectionState),
 	}
-	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root, l)
+	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root, false, l)
 	if err != nil {
 		conn.Close()
 		t.Fatal(err)
@@ -184,6 +184,25 @@ func TestCollectionChanges(t *testing.T) {
 
 	shouldExist(t, sm, "c9", collectionAssertions("_FS7"))
 
+	//create a sys collection, it should NOT be detected
+	_, err = zkCli.Create(sm.solrRoot+"/collections/.sys.COORDINATOR-COLL-_FS7", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shouldNotExist(t, sm, ".sys.COORDINATOR-COLL-_FS7")
+
+	_, err = zkCli.Create(sm.solrRoot+"/collections/.sys.COORDINATOR-COLL-_FS7/state.json", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shouldNotExist(t, sm, ".sys.COORDINATOR-COLL-_FS7")
+
+	_, err = zkCli.Set(sm.solrRoot+"/collections/.sys.COORDINATOR-COLL-_FS7/state.json", []byte("{\".sys.COORDINATOR-COLL-_FS7\":{ \"configName\": \"_FS7\", \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\", \"Base_url\":\"solr\", \"node_name\":\"8984_solr\", \"state\":\"active\", \"leader\":\"false\", \"type\": \"NRT\", \"force_set_state\":\"false\"}}}}}}"), -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shouldNotExist(t, sm, ".sys.COORDINATOR-COLL-_FS7")
+
 	if len(testutil.solrEventListener.collectionStates) != 2 || testutil.solrEventListener.collections != 2 {
 		t.Fatalf("Event listener didn't  not get event for collection  = %d, collectionstate = %d", testutil.solrEventListener.collections, len(testutil.solrEventListener.collectionStates))
 	}
@@ -199,7 +218,7 @@ func TestCollectionChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sm2, err := NewSolrMonitorWithRoot(conn2, w2, testutil.logger, testutil.root, nil)
+	sm2, err := NewSolrMonitorWithRoot(conn2, w2, testutil.logger, testutil.root, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
