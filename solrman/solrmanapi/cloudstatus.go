@@ -20,11 +20,12 @@ import "time"
 type SolrCloudStatus map[string]*SolrNodeStatus // keys are hostnames
 
 type SolrNodeStatus struct {
-	Hostname string                     // the node's hostname, as determined by gethostbyaddr
-	NodeName string                     // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
-	Cores    map[string]*SolrCoreStatus // keys are core names
-	Zone     string                     // cloud zone where host exists
-	DiskSize float64
+	Hostname      string                     // the node's hostname, as determined by gethostbyaddr
+	NodeName      string                     // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
+	Cores         map[string]*SolrCoreStatus // keys are core names
+	Zone          string                     // cloud zone where host exists
+	DiskSize      float64
+	IndexDiskSize float64
 }
 
 type SolrCoreStatus struct {
