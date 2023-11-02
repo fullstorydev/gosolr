@@ -15,6 +15,7 @@
 package smmodel
 
 import (
+	"gotest.tools/assert"
 	"io/ioutil"
 	"strconv"
 	"strings"
@@ -45,7 +46,6 @@ func TestSmallModel(t *testing.T) {
 	moves := m.ComputeBestMoves(3)
 	assertEquals(t, []string{
 		`{"core":"A_shard1_0_replica2","collection":"A","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-2.node"}`,
-		`{"core":"B_shard1_replica1","collection":"B","shard":"shard1","from_node":"solr-2.node","to_node":"solr-1.node"}`,
 	}, moves)
 }
 
@@ -63,9 +63,7 @@ func TestCollectionBalanceModel(t *testing.T) {
 	m := createTestModel(collectionBalanceModel)
 	moves := m.ComputeBestMoves(3)
 
-	assertEquals(t, []string{
-		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
-	}, moves)
+	assert.Assert(t, len(moves) == 0, "should not be any move")
 }
 
 func TestLargeModel(t *testing.T) {
@@ -82,8 +80,8 @@ func TestLargeModel(t *testing.T) {
 		`{"core":"collD_shard1_0_0_0_replica1","collection":"collD","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
 		`{"core":"collD_shard1_0_0_1_replica1","collection":"collD","shard":"shard1_0_0_1","from_node":"solr-1.node","to_node":"solr-9.node"}`,
 		`{"core":"collD_shard1_0_1_0_replica1","collection":"collD","shard":"shard1_0_1_0","from_node":"solr-1.node","to_node":"solr-7.node"}`,
-		`{"core":"coll3F_shard1_0_0_0_replica1","collection":"coll3F","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
 		`{"core":"coll8A_shard1_0_1_0_replica1","collection":"coll8A","shard":"shard1_0_1_0","from_node":"solr-4.node","to_node":"solr-6.node"}`,
+		`{"core":"coll37_shard1_0_0_0_replica1","collection":"coll37","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
 	}, moves)
 }
 
@@ -126,6 +124,7 @@ func createTestModel(data string) *Model {
 			currentNode = &Node{
 				Name:    name,
 				Address: address,
+				MaxSize: 1000000000000,
 			}
 			if seenNodeNames[name] {
 				panic("already seen: " + name)
