@@ -204,6 +204,9 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 			}
 
 			for _, core := range candidates {
+				if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
+					continue
+				}
 				// Make sure moving this core won't violate collection balance.
 				coll := m.Collections[core.collectionId]
 				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.maxCoresPerNode {
@@ -285,8 +288,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				// no good choices
 				break
 			}
-			if target.MaxSize > 0 && target.Size >= target.MaxSize {
-				// too much data already on this node
+			if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
 				continue
 			}
 

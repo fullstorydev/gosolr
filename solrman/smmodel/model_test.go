@@ -45,7 +45,6 @@ func TestSmallModel(t *testing.T) {
 	moves := m.ComputeBestMoves(3)
 	assertEquals(t, []string{
 		`{"core":"A_shard1_0_replica2","collection":"A","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-2.node"}`,
-		`{"core":"B_shard1_replica1","collection":"B","shard":"shard1","from_node":"solr-2.node","to_node":"solr-1.node"}`,
 	}, moves)
 }
 
@@ -63,9 +62,9 @@ func TestCollectionBalanceModel(t *testing.T) {
 	m := createTestModel(collectionBalanceModel)
 	moves := m.ComputeBestMoves(3)
 
-	assertEquals(t, []string{
-		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
-	}, moves)
+	if len(moves) != 0 {
+		t.Errorf("Should not have any move")
+	}
 }
 
 func TestLargeModel(t *testing.T) {
@@ -126,6 +125,7 @@ func createTestModel(data string) *Model {
 			currentNode = &Node{
 				Name:    name,
 				Address: address,
+				MaxSize: 1000000000000,
 			}
 			if seenNodeNames[name] {
 				panic("already seen: " + name)
