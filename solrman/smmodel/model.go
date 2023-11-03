@@ -204,7 +204,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 			}
 
 			for _, core := range candidates {
-				if core.Size+target.Size > target.MaxSize {
+				if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
 					continue
 				}
 				// Make sure moving this core won't violate collection balance.
@@ -288,7 +288,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				// no good choices
 				break
 			}
-			if core.Size+target.Size > target.MaxSize {
+			if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
 				continue
 			}
 
