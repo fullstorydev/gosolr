@@ -15,7 +15,6 @@
 package smmodel
 
 import (
-	"gotest.tools/assert"
 	"io/ioutil"
 	"strconv"
 	"strings"
@@ -63,7 +62,9 @@ func TestCollectionBalanceModel(t *testing.T) {
 	m := createTestModel(collectionBalanceModel)
 	moves := m.ComputeBestMoves(3)
 
-	assert.Assert(t, len(moves) == 0, "should not be any move")
+	if len(moves) != 0 {
+		t.Errorf("Should not have any move")
+	}
 }
 
 func TestLargeModel(t *testing.T) {
