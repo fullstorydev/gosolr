@@ -5,13 +5,12 @@ The client can register the SolrEventListener to listen to the solr cluster stat
 
 On startup, the events are fired in this order:
  1. SolrLiveNodesChanged fires for all the solr live nodes (node which keeps indexes). It keeps watch on zk node /solr/live_nodes 's children
- 2. SolrQueryNodesChanged fires for all the solr query nodes (node which coordinates the query execution). It keeps watch on zk node /solr/live_query_nodes 's children
- 3. SolrCollectionsChanged fires for all collections that exist. It keeps watch on zk node /solr/collections 's children.
+ 2. SolrCollectionsChanged fires for all collections that exist. It keeps watch on zk node /solr/collections 's children.
     3.1 SolrCollectionStateChanged fires for each collection; keeps watch on zk node /solr/collections/collname/state.json
     3.2 SolrCollectionReplicaStatesChanged fires if Per replica state(PRS) is enable for collection.
     If PRS enable then it keeps watch on zk node /solr/collections/collname/state.json 's children. Those children represents state of each replica of collection
     (reference https://issues.apache.org/jira/browse/SOLR-15052, https://docs.google.com/document/d/1xdxpzUNmTZbk0vTMZqfen9R3ArdHokLITdiISBxCFUg/edit )
- 4. SolrClusterPropsChanged fires for the single clusterprops file
+ 3. SolrClusterPropsChanged fires for the single clusterprops file
 
 After initialization it delivers events for following condition
 
@@ -40,9 +39,6 @@ After initialization it delivers events for following condition
 type SolrEventListener interface {
 	// all the live nodes in the solr cluster
 	SolrLiveNodesChanged(livenodes []string)
-
-	// all the query aggregator nodes in ths solr cluster
-	SolrQueryNodesChanged(querynodes []string)
 
 	// all the collections in the solr cluster
 	SolrCollectionsChanged(collections []string)
