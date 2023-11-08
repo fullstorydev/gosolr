@@ -80,7 +80,6 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 
 	l := &SEListener{
 		liveNodes:        0,
-		queryNodes:       0,
 		collections:      0,
 		collStateEvents:  0,
 		collectionStates: make(map[string]*CollectionState),
@@ -207,8 +206,8 @@ func TestCollectionChanges(t *testing.T) {
 		t.Fatalf("Event listener didn't  not get event for collection  = %d, collectionstate = %d", testutil.solrEventListener.collections, len(testutil.solrEventListener.collectionStates))
 	}
 
-	if testutil.solrEventListener.liveNodes != 1 || testutil.solrEventListener.queryNodes != 1 {
-		t.Fatalf("Event listener didn't  not get event for livenodes  = %d, querynodes = %d", testutil.solrEventListener.liveNodes, testutil.solrEventListener.queryNodes)
+	if testutil.solrEventListener.liveNodes != 1 {
+		t.Fatalf("Event listener didn't  not get event for livenodes  = %d ", testutil.solrEventListener.liveNodes)
 	}
 
 	// Get a fresh new solr monitor and make sure it starts in the right state.
@@ -395,7 +394,6 @@ func DisabledTestBadStateJson(t *testing.T) {
 
 type SEListener struct {
 	liveNodes               int
-	queryNodes              int
 	collections             int
 	collStateEvents         int
 	collReplicaChangeEvents int
@@ -405,10 +403,6 @@ type SEListener struct {
 
 func (l *SEListener) SolrLiveNodesChanged(livenodes []string) {
 	l.liveNodes = len(livenodes)
-}
-
-func (l *SEListener) SolrQueryNodesChanged(querynodes []string) {
-	l.queryNodes = len(querynodes)
 }
 
 func (l *SEListener) SolrCollectionsChanged(collections []string) {

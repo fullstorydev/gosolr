@@ -27,12 +27,11 @@ import (
 )
 
 const (
-	collectionsPath    = "/collections"
-	liveNodesPath      = "/live_nodes"
-	liveQueryNodesPath = "/live_query_nodes"
-	rolesPath          = "/roles.json"
-	clusterPropsPath   = "/clusterprops.json"
-	sysColPrefix       = ".sys."
+	collectionsPath  = "/collections"
+	liveNodesPath    = "/live_nodes"
+	rolesPath        = "/roles.json"
+	clusterPropsPath = "/clusterprops.json"
+	sysColPrefix     = ".sys."
 )
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
@@ -46,7 +45,6 @@ type SolrMonitor struct {
 	mu                sync.RWMutex
 	collections       map[string]*collection // map of all currently-known collections
 	liveNodes         []string               // current set of live_nodes
-	queryNodes        []string               // current set of live_query_nodes
 	overseerNodes     []string               // current set of overseer nodes (from roles.json)
 	clusterProps      map[string]string      // current set of cluster props (from clusterprops.json)
 	solrEventListener SolrEventListener      // to listen the solr cluster state
@@ -188,16 +186,6 @@ func (c *SolrMonitor) doGetCollectionState(name string) (*CollectionState, error
 	return coll.collectionState, nil
 }
 
-func (c *SolrMonitor) GetQueryNodes() ([]string, error) {
-	if c.zkCli.State() != zk.StateHasSession {
-		return nil, errors.New("not currently connected to zk")
-	}
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return append([]string{}, c.queryNodes...), nil
-}
-
 func (c *SolrMonitor) GetLiveNodes() ([]string, error) {
 	if c.zkCli.State() != zk.StateHasSession {
 		return nil, errors.New("not currently connected to zk")
@@ -243,8 +231,6 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 		return c.updateCollections(children)
 	case c.solrRoot + liveNodesPath:
 		return c.updateLiveNodes(children)
-	case c.solrRoot + liveQueryNodesPath:
-		return c.updateLiveQueryNodes(children)
 	default:
 		//collectionsPath + "/" + coll.name + "/state.json": we want to state.json children
 		if !strings.HasPrefix(path, c.solrRoot+"/collections/") || !strings.HasSuffix(path, "/state.json") {
@@ -417,8 +403,6 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 		return true
 	case c.solrRoot + liveNodesPath:
 		return true
-	case c.solrRoot + liveQueryNodesPath:
-		return true
 	default:
 		// watch coll/state.json childrens for replica status
 		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
@@ -511,16 +495,12 @@ func (c *SolrMonitor) start() error {
 
 	collectionsPath := c.solrRoot + collectionsPath
 	liveNodesPath := c.solrRoot + liveNodesPath
-	queryNodesPath := c.solrRoot + liveQueryNodesPath
 	rolesPath := c.solrRoot + rolesPath
 	clusterPropsPath := c.solrRoot + clusterPropsPath
 	c.pathsToWatch[clusterPropsPath] = struct{}{}
 	c.zkWatcher.Start(c.zkCli, callbacks{c})
 
 	if err := c.zkWatcher.MonitorChildren(liveNodesPath); err != nil {
-		return err
-	}
-	if err := c.zkWatcher.MonitorChildren(queryNodesPath); err != nil {
 		return err
 	}
 	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
@@ -621,17 +601,6 @@ func (c *SolrMonitor) updateLiveNodes(liveNodes []string) error {
 	c.liveNodes = liveNodes
 	if c.solrEventListener != nil {
 		c.solrEventListener.SolrLiveNodesChanged(liveNodes)
-	}
-	return nil
-}
-
-func (c *SolrMonitor) updateLiveQueryNodes(queryNodes []string) error {
-	c.logger.Printf("%s (%d): %s", liveQueryNodesPath, len(queryNodes), queryNodes)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.queryNodes = queryNodes
-	if c.solrEventListener != nil {
-		c.solrEventListener.SolrQueryNodesChanged(c.queryNodes)
 	}
 	return nil
 }
