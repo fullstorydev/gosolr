@@ -14,14 +14,17 @@
 
 package solrmonitor
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 type CollectionState struct {
 	Shards           map[string]*ShardState `json:"shards"`           // map from shard name to shard state
 	Router           Router                 `json:"router"`           // e.g. {"name":"compositeId"}
 	MaxShardsPerNode string                 `json:"maxShardsPerNode"` // e.g. "1" (yes, these are strings, not numbers)
 	AutoAddReplicas  string                 `json:"autoAddReplicas"`  // e.g. "false" (yes, these are strings, not bools)
-	PerReplicaState  bool                   `json:"perReplicaState"`  // whether collection keeps state for each replica separately
+	PerReplicaState  interface{}            `json:"perReplicaState"`  // whether collection keeps state for each replica separately
 	// These following fields are set manually, not from state.json in Zookeeper.
 
 	// ConfigName indicates the name of the node in solr/configs (in ZK) that this collection uses.
@@ -36,7 +39,16 @@ func (cs *CollectionState) String() string {
 }
 
 func (cs *CollectionState) IsPRSEnabled() bool {
-	return cs.PerReplicaState
+	switch v := cs.PerReplicaState.(type) {
+	case bool:
+		return v
+	case string:
+		boolVal, err := strconv.ParseBool(v)
+		if err == nil {
+			return boolVal
+		}
+	}
+	return true //default as true
 }
 
 // zkCollectionState is used to parse top level collection zk nodes.

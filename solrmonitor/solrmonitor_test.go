@@ -392,6 +392,34 @@ func DisabledTestBadStateJson(t *testing.T) {
 	testutil.logger.Clear()
 }
 
+func TestPerReplicaStateFlag(t *testing.T) {
+	sm, testutil := setup(t)
+	defer testutil.teardown()
+
+	zkCli := testutil.conn
+	zkCli.Create(sm.solrRoot+"/collections", nil, 0, zk.WorldACL(zk.PermAll))
+	zkCli.Create(sm.solrRoot+"/collections/c1", nil, 0, zk.WorldACL(zk.PermAll))
+	zkCli.Create(sm.solrRoot+"/collections/c1/state.json", nil, 0, zk.WorldACL(zk.PermAll))
+	zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":true}}"), -1) //val as bool
+
+	shouldExist(t, sm, "c1", func(collectionState *CollectionState) error {
+		if collectionState.IsPRSEnabled() {
+			return nil
+		} else {
+			return errors.New("Expect IsPRSEnabled as true but found false")
+		}
+	})
+
+	zkCli.Set(sm.solrRoot+"/collections/c1/state.json", []byte("{\"c1\":{\"perReplicaState\":\"false\"}}"), -1) //val as string
+	shouldExist(t, sm, "c1", func(collectionState *CollectionState) error {
+		if !collectionState.IsPRSEnabled() {
+			return nil
+		} else {
+			return errors.New("Expect IsPRSEnabled as false but found true")
+		}
+	})
+}
+
 type SEListener struct {
 	liveNodes               int
 	collections             int
