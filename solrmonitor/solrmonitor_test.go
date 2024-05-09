@@ -18,6 +18,7 @@
 package solrmonitor
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
@@ -357,6 +358,26 @@ func TestPRSProtocol(t *testing.T) {
 	// making sure collection reference are different
 	if e1 != nil || e3 != nil || ref1 == ref2 {
 		t.Fatalf("Collection ref is same or error e1: %s, e3:%s", e1.Error(), e3.Error())
+	}
+}
+
+func TestClusterProps(t *testing.T) {
+	data := []byte(string("{\n    \"urlScheme\": \"http\",\n    \"rate-limiters\": {\n        \"enabled\": true,\n        \"guaranteedSlots\": 1,\n        \"allowedRequests\": 1,\n        \"slotBorrowingEnabled\": false,\n        \"slotAcquisitionTimeoutInMS\": 0\n    }\n}"))
+	var clusterProps map[string]interface{}
+	err := json.Unmarshal([]byte(data), &clusterProps)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stringOnlyClusterProps := map[string]string{}
+	for key, value := range clusterProps {
+		if v, ok := value.(string); ok {
+			stringOnlyClusterProps[key] = v
+		}
+	}
+
+	if len(stringOnlyClusterProps) != 1 {
+		t.Fatal("unable to find string values")
 	}
 }
 

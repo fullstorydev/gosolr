@@ -269,14 +269,21 @@ func (c *SolrMonitor) clusterPropsChanged(data string) error {
 		return nil
 	}
 
-	var clusterProps map[string]string
+	var clusterProps map[string]interface{}
 	err := json.Unmarshal([]byte(data), &clusterProps)
 	if err != nil {
 		c.logger.Printf("error when parsing JSON for cluster props: %s", err.Error())
 		return err
 	}
 
-	err = c.updateClusterProps(clusterProps)
+	stringOnlyClusterProps := map[string]string{}
+	for key, value := range clusterProps {
+		if v, ok := value.(string); ok {
+			stringOnlyClusterProps[key] = v
+		}
+	}
+
+	err = c.updateClusterProps(stringOnlyClusterProps)
 	if err != nil {
 		c.logger.Printf("error when updating cluster props: %s", err.Error())
 		return err
