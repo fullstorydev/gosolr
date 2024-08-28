@@ -65,14 +65,18 @@ type ZkCli interface {
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
-func NewSolrMonitor(zkCli ZkCli, zkWatcher *ZkWatcherMan) (*SolrMonitor, error) {
-	return NewSolrMonitorWithLogger(zkCli, zkWatcher, zk.DefaultLogger, []string{sysColPrefix}, []string{"_as"}, nil) //this is not great, ignoring _as suffix is specific to us
+func NewSolrMonitor(zkCli ZkCli, ignoreSuffixes []string, zkWatcher *ZkWatcherMan) (*SolrMonitor, error) {
+	return NewSolrMonitorWithLogger(zkCli, zkWatcher, zk.DefaultLogger, true, nil, nil) // ignore sys collections by default
 }
 
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
-func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, ignorePrefixes []string, ignoreSuffixes []string, solrEventListener SolrEventListener) (*SolrMonitor, error) {
+func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, ignoreSysCol bool, ignoreSuffixes []string, solrEventListener SolrEventListener) (*SolrMonitor, error) {
+	var ignorePrefixes []string
+	if ignoreSysCol {
+		ignorePrefixes = []string{sysColPrefix}
+	}
 	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr", ignorePrefixes, ignoreSuffixes, solrEventListener)
 }
 
