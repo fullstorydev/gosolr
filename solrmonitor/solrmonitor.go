@@ -36,11 +36,12 @@ const (
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
 type SolrMonitor struct {
-	logger        zk.Logger // where to debug log
-	zkCli         ZkCli     // the ZK client
-	solrRoot      string    // e.g. "/solr"
-	includeSysCol bool      // whether to include or ignore system collection with prefix .sys., for example .sys.COORDINATOR-COLL-_FS7
-	zkWatcher     *ZkWatcherMan
+	logger         zk.Logger // where to debug log
+	zkCli          ZkCli     // the ZK client
+	solrRoot       string    // e.g. "/solr"
+	ignorePrefixes []string  // ignore collections with these prefixes, for example system collection prefix .sys.
+	ignoreSuffixes []string  // ignore collections with these suffixes
+	zkWatcher      *ZkWatcherMan
 
 	mu                sync.RWMutex
 	collections       map[string]*collection // map of all currently-known collections
@@ -65,25 +66,26 @@ type ZkCli interface {
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
 func NewSolrMonitor(zkCli ZkCli, zkWatcher *ZkWatcherMan) (*SolrMonitor, error) {
-	return NewSolrMonitorWithLogger(zkCli, zkWatcher, zk.DefaultLogger, nil)
+	return NewSolrMonitorWithLogger(zkCli, zkWatcher, zk.DefaultLogger, []string{sysColPrefix}, []string{"_as"}, nil) //this is not great, ignoring _as suffix is specific to us
 }
 
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
-func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrEventListener SolrEventListener) (*SolrMonitor, error) {
-	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr", false, solrEventListener)
+func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, ignorePrefixes []string, ignoreSuffixes []string, solrEventListener SolrEventListener) (*SolrMonitor, error) {
+	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr", ignorePrefixes, ignoreSuffixes, solrEventListener)
 }
 
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
 // will be closed when Solrmonitor is closed, and should not be used by any other caller.
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
-func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrRoot string, includeSysCol bool, solrEventListener SolrEventListener) (*SolrMonitor, error) {
+func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, solrRoot string, ignorePrefixes []string, ignoreSuffixes []string, solrEventListener SolrEventListener) (*SolrMonitor, error) {
 	c := &SolrMonitor{
 		logger:            logger,
 		zkCli:             zkCli,
 		solrRoot:          solrRoot,
-		includeSysCol:     includeSysCol,
+		ignorePrefixes:    ignorePrefixes,
+		ignoreSuffixes:    ignoreSuffixes,
 		zkWatcher:         zkWatcher,
 		collections:       make(map[string]*collection),
 		solrEventListener: solrEventListener,
@@ -219,16 +221,7 @@ func (c *SolrMonitor) GetClusterProps() (map[string]string, error) {
 func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 	switch path {
 	case c.solrRoot + collectionsPath:
-		if !c.includeSysCol {
-			var filtered []string
-			for _, child := range children {
-				if !strings.HasPrefix(child, sysColPrefix) {
-					filtered = append(filtered, child)
-				}
-			}
-			children = filtered
-		}
-		return c.updateCollections(children)
+		return c.updateCollections(c.filterCollections(children))
 	case c.solrRoot + liveNodesPath:
 		return c.updateLiveNodes(children)
 	default:
@@ -238,6 +231,33 @@ func (c *SolrMonitor) childrenChanged(path string, children []string) error {
 		}
 		return c.updateCollection(path, children)
 	}
+}
+
+func (c *SolrMonitor) filterCollections(collections []string) []string {
+	if c.ignorePrefixes == nil && c.ignoreSuffixes == nil {
+		return collections
+	}
+	var filtered []string
+	for _, coll := range collections {
+		if !c.shouldIgnoreCollection(coll) {
+			filtered = append(filtered, coll)
+		}
+	}
+	return filtered
+}
+
+func (c *SolrMonitor) shouldIgnoreCollection(coll string) bool {
+	for _, ignorePrefix := range c.ignorePrefixes {
+		if strings.HasPrefix(coll, ignorePrefix) {
+			return true
+		}
+	}
+	for _, ignoreSuffix := range c.ignoreSuffixes {
+		if strings.HasSuffix(coll, ignoreSuffix) {
+			return true
+		}
+	}
+	return false
 }
 
 type zkRoleState struct {
@@ -434,7 +454,7 @@ func (c *SolrMonitor) dataChanged(path string, data string, version int32) error
 	if coll == nil {
 		// Always require a collection!
 		return fmt.Errorf("unknown dataChanged: %s", path)
-	} else if !c.includeSysCol && strings.HasPrefix(coll.name, sysColPrefix) {
+	} else if c.shouldIgnoreCollection(coll.name) {
 		//then ignore this change, might not be necessary as such collection is already filtered out
 		//at childrenChanged on the collections node, but just to play safe here...
 		return nil
