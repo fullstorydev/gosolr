@@ -31,7 +31,7 @@ const (
 	liveNodesPath    = "/live_nodes"
 	rolesPath        = "/roles.json"
 	clusterPropsPath = "/clusterprops.json"
-	sysColPrefix     = ".sys."
+	SysColPrefix     = ".sys."
 )
 
 // Keeps an in-memory copy of the current state of the Solr cluster; automatically updates on ZK changes.
@@ -74,7 +74,7 @@ func NewSolrMonitor(zkCli ZkCli, ignoreSuffixes []string, zkWatcher *ZkWatcherMa
 // The provided zkWatcher must already be wired to the associated zkCli to receive all global events.
 func NewSolrMonitorWithLogger(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logger, ignoreSuffixes []string, solrEventListener SolrEventListener) (*SolrMonitor, error) {
 	//ignore system collections by default
-	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr", []string{sysColPrefix}, ignoreSuffixes, solrEventListener)
+	return NewSolrMonitorWithRoot(zkCli, zkWatcher, logger, "/solr", []string{SysColPrefix}, ignoreSuffixes, solrEventListener)
 }
 
 // Create a new solrmonitor.  Solrmonitor takes ownership of the provided zkCli and zkWatcher-- they
