@@ -207,7 +207,10 @@ func (m *ZkWatcherMan) enqueueDeferredTask(task interface{}) {
 func (m *ZkWatcherMan) MonitorChildren(path string) error {
 	zkErr, cbErr := m.fetchChildren(path)
 	if zkErr != nil {
-		return zkErr
+		return fmt.Errorf("MonitorChildren zk error on %s: %w", path, zkErr)
+	}
+	if cbErr != nil {
+		return fmt.Errorf("MonitorChildren cb error on %s: %w", path, cbErr)
 	}
 	return cbErr
 }
@@ -235,7 +238,10 @@ func (m *ZkWatcherMan) fetchChildren(path string) (zkErr, cbErr error) {
 func (m *ZkWatcherMan) MonitorData(path string) error {
 	zkErr, cbErr := m.fetchData(path)
 	if zkErr != nil {
-		return zkErr
+		return fmt.Errorf("MonitorData zk error on %s : %w", path, zkErr)
+	}
+	if cbErr != nil {
+		return fmt.Errorf("MonitorData cb error on %s : %w", path, cbErr)
 	}
 	return cbErr
 }

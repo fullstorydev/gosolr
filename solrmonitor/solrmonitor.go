@@ -95,7 +95,7 @@ func NewSolrMonitorWithRoot(zkCli ZkCli, zkWatcher *ZkWatcherMan, logger zk.Logg
 	err := c.start()
 	if err != nil {
 		c.Close()
-		return nil, err
+		return nil, fmt.Errorf("NewSolrMonitorWithRoot error: %w", err)
 	}
 	return c, nil
 }
@@ -529,16 +529,16 @@ func (c *SolrMonitor) start() error {
 	c.zkWatcher.Start(c.zkCli, callbacks{c})
 
 	if err := c.zkWatcher.MonitorChildren(liveNodesPath); err != nil {
-		return err
+		return fmt.Errorf("SolrMonitor start error: %w", err)
 	}
 	if err := c.zkWatcher.MonitorChildren(collectionsPath); err != nil {
-		return err
+		return fmt.Errorf("SolrMonitor start error: %w", err)
 	}
 	if err := c.zkWatcher.MonitorData(rolesPath); err != nil {
-		return err
+		return fmt.Errorf("SolrMonitor start error: %w", err)
 	}
 	if err := c.zkWatcher.MonitorData(clusterPropsPath); err != nil {
-		return err
+		return fmt.Errorf("SolrMonitor start error: %w", err)
 	}
 	return nil
 }
@@ -685,7 +685,7 @@ func parseStateData(name string, data []byte, version int32) (*CollectionState, 
 	// name to a CollectionState object.  In other words they are a ClusterState, containing only the relevant collection.
 	var state ClusterState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to unmarhal data for %s : %w", name, err)
 	}
 
 	var keys []string
