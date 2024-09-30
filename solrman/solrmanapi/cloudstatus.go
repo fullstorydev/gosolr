@@ -31,19 +31,20 @@ type SolrNodeStatus struct {
 }
 
 type SolrCoreStatus struct {
-	Name         string
-	NodeName     string    // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
-	Collection   string    // collection name (e.g. "1A00E" or "thefullstory.com")
-	Shard        string    // shard name (e.g. "shard1")
-	ShardState   string    // e.g. "active", "inactive"
-	Range        string    // // e.g. "80000000-b332ffff"
-	Replica      string    // replica name (e.g. "core_node_2")
-	ReplicaState string    // e.g. "active", "inactive", "recovering", "down"
-	IsLeader     bool      // whether this replica is the leader of its shard
-	HasStats     bool      // if false, core status could not be queried and following attributes are expected to be -1
-	NumDocs      int64     // total number of indexed documents
-	IndexSize    int64     // in bytes
-	Type         string    // e.g. "NRT", "PULL", "TLOG"
-	Version      int64     // Update version of the replica (may be empty)
-	LastModified time.Time // Last time the replica was modified (may be empty)
+	Name            string
+	NodeName        string    // the node's identifier within SolrCloud (e.g. "1.1.1.1:8983_solr")
+	Collection      string    // collection name (e.g. "1A00E" or "thefullstory.com")
+	Shard           string    // shard name (e.g. "shard1")
+	ShardState      string    // e.g. "active", "inactive"
+	Range           string    // // e.g. "80000000-b332ffff"
+	Replica         string    // replica name (e.g. "core_node_2")
+	ReplicaState    string    // e.g. "active", "inactive", "recovering", "down"
+	IsLeader        bool      // whether this replica is the leader of its shard
+	HasStats        bool      // if false, core status could not be queried and following attributes are expected to be -1
+	NumDocs         int64     // total number of indexed documents
+	IndexSize       int64     // in bytes
+	OnDiskIndexSize float64   // in bytes, differs from IndexSize for TeeDirectory implementations
+	Type            string    // e.g. "NRT", "PULL", "TLOG"
+	Version         int64     // Update version of the replica (may be empty)
+	LastModified    time.Time // Last time the replica was modified (may be empty)
 }
