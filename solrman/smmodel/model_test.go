@@ -67,6 +67,15 @@ func TestCollectionBalanceModel(t *testing.T) {
 	}
 }
 
+func TestThrashingModel(t *testing.T) {
+	t.Parallel()
+	m := createTestModel(thrashingModel)
+	moves := m.ComputeBestMoves(1)
+	if len(moves) != 0 {
+		t.Errorf("Should not have any moves")
+	}
+}
+
 func TestLargeModel(t *testing.T) {
 	t.Parallel()
 	data, err := ioutil.ReadFile("large_model.txt")
@@ -117,15 +126,25 @@ func createTestModel(data string) *Model {
 	for _, line := range lines {
 		if strings.HasPrefix(line, "solr-") {
 			parts := strings.Split(line, ",")
-			if len(parts) != 2 {
+			var maxSize int64
+			var err error
+			if len(parts) < 2 || len(parts) > 3 {
 				panic("unexpected split on: " + line)
+			}
+			if len(parts) == 2 {
+				maxSize = 1000000000000
+			} else {
+				maxSize, err = strconv.ParseInt(parts[2], 10, 0)
+				if err != nil {
+					panic("error parsing max size: " + parts[2] + " " + err.Error())
+				}
 			}
 			name := parts[0]
 			address := parts[1]
 			currentNode = &Node{
 				Name:    name,
 				Address: address,
-				MaxSize: 1000000000000,
+				MaxSize: maxSize,
 			}
 			if seenNodeNames[name] {
 				panic("already seen: " + name)
@@ -244,5 +263,14 @@ const (
 		"B_shard1_replica1,5.0M,5.0GB\n" +
 		"solr-2.node,2.2.2.2:8983_solr\n" +
 		"B_shard2_replica1,1.0M,1.0GB\n" +
+		""
+
+	// max size is ~800GB, solr-1 has 15GB of data, which is <10%. Since solr-2 is not significantly smaller (8GB + 5*3GB > 12GB), we should not move.
+	thrashingModel = "" +
+		"solr-1.node,1.1.1.1:8983_solr,1000000000000\n" +
+		"A_shard1_replica2,15.0M,12.0GB\n" +
+		"A_shard2_replica3,15.0M,3.0GB\n" +
+		"solr-2.node,2.2.2.2:8983_solr\n" +
+		"A_shard4_replica5,15.0M,8.0GB\n" +
 		""
 )
