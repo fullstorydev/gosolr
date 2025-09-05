@@ -43,6 +43,8 @@ type SolrManStorage interface {
 
 	// Returns a list of solr orgs that should not be split or moved.
 	GetStationaryOrgList() ([]string, error)
+	AddStationaryOrgs(orgs []string) ([]string, error)
+	RemoveStationaryOrgs(orgs []string) ([]string, error)
 
 	IsDisabled() (bool, error)                      // if true, solrman is entirely disabled
 	GetDisabledReasons() (map[string]string, error) //

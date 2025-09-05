@@ -137,4 +137,51 @@ func testStorage_StationaryOrgList(t *testing.T, s SolrManStorage) {
 	if len(stationaryOrgList) != 0 {
 		t.Errorf("expected empty stationary org list, got %v", stationaryOrgList)
 	}
+
+	// test adding orgs
+	orgs := []string{"org1", "org2", "org3"}
+	stationaryOrgList, err = s.AddStationaryOrgs(orgs)
+	if err != nil {
+		t.Errorf("AddStationaryOrgs failed: %s", err)
+		return
+	}
+	if len(orgs) != len(stationaryOrgList) {
+		t.Errorf("expected %d orgs in stationary org list, got %v", len(orgs), stationaryOrgList)
+	}
+	for i := range orgs {
+		for j := range stationaryOrgList {
+			if orgs[i] == stationaryOrgList[j] {
+				break
+			}
+			if j == len(stationaryOrgList)-1 {
+				t.Errorf("expected org %s in stationary org list, got %v", orgs[i], stationaryOrgList)
+			}
+		}
+	}
+
+	orgsToRemove := []string{"org2"}
+	expectedRemainingOrgs := []string{"org1", "org3"}
+	stationaryOrgList, err = s.RemoveStationaryOrgs(orgsToRemove)
+	if err != nil {
+		t.Errorf("RemoveStationaryOrgs failed: %s", err)
+		return
+	}
+	if len(expectedRemainingOrgs) != len(stationaryOrgList) {
+		t.Errorf("expected %d orgs in stationary org list, got %v", len(orgs), stationaryOrgList)
+	}
+	for _, org := range stationaryOrgList {
+		if org == "org2" {
+			t.Errorf("expected org %s not in stationary org list, got %v", org, stationaryOrgList)
+		}
+	}
+	for i := range expectedRemainingOrgs {
+		for j := range stationaryOrgList {
+			if expectedRemainingOrgs[i] == stationaryOrgList[j] {
+				break
+			}
+			if j == len(stationaryOrgList)-1 {
+				t.Errorf("expected org %s in stationary org list, got %v", orgs[i], stationaryOrgList)
+			}
+		}
+	}
 }

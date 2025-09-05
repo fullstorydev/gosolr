@@ -206,6 +206,14 @@ func (s *ZkStorage) GetStationaryOrgList() ([]string, error) {
 	return children, nil
 }
 
+func (s *ZkStorage) AddStationaryOrgs(orgs []string) ([]string, error) {
+	panic("not implemented")
+}
+
+func (s *ZkStorage) RemoveStationaryOrgs(orgs []string) ([]string, error) {
+	panic("not implemented")
+}
+
 func (s *ZkStorage) IsDisabled() (bool, error) {
 	path := s.disabledPath()
 	children, _, err := s.conn.Children(path)

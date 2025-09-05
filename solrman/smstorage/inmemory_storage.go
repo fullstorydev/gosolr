@@ -102,6 +102,29 @@ func (s *InMemoryStorage) GetStationaryOrgList() ([]string, error) {
 	return s.stationaryOrgList, nil
 }
 
+func (s *InMemoryStorage) AddStationaryOrgs(orgs []string) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	s.stationaryOrgList = append(s.stationaryOrgList, orgs...)
+
+	return s.stationaryOrgList, nil
+}
+
+func (s *InMemoryStorage) RemoveStationaryOrgs(orgs []string) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, org := range orgs {
+		for i, _ := range s.stationaryOrgList {
+			if s.stationaryOrgList[i] == org {
+				s.stationaryOrgList = append(s.stationaryOrgList[:i], s.stationaryOrgList[i+1:]...)
+				break
+			}
+		}
+	}
+	return s.stationaryOrgList, nil
+}
+
 func (s *InMemoryStorage) IsDisabled() (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
