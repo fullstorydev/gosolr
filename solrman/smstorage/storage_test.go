@@ -129,5 +129,12 @@ func testStorage_CompletedOps(t *testing.T, s SolrManStorage) {
 }
 
 func testStorage_StationaryOrgList(t *testing.T, s SolrManStorage) {
-	
+	stationaryOrgList, err := s.GetStationaryOrgList()
+	if err != nil {
+		t.Errorf("GetStationaryOrgList failed: %s", err)
+		return
+	}
+	if len(stationaryOrgList) != 0 {
+		t.Errorf("expected empty stationary org list, got %v", stationaryOrgList)
+	}
 }
