@@ -115,7 +115,7 @@ func (s *InMemoryStorage) RemoveStationaryOrgs(orgs []string) ([]string, error) 
 	defer s.mu.RUnlock()
 
 	for _, org := range orgs {
-		for i, _ := range s.stationaryOrgList {
+		for i := range s.stationaryOrgList {
 			if s.stationaryOrgList[i] == org {
 				s.stationaryOrgList = append(s.stationaryOrgList[:i], s.stationaryOrgList[i+1:]...)
 				break
