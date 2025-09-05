@@ -207,11 +207,58 @@ func (s *ZkStorage) GetStationaryOrgList() ([]string, error) {
 }
 
 func (s *ZkStorage) AddStationaryOrgs(orgs []string) ([]string, error) {
-	panic("not implemented")
+	path := s.stationaryPath()
+	children, _, err := s.conn.Children(path)
+	if err == zk.ErrNoNode {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
+	}
+
+	for _, org := range orgs {
+		orgPath := fmt.Sprintf("%s/%s", path, org)
+		_, err = s.conn.Create(orgPath, nil, 0, zk.WorldACL(zk.PermAll))
+		if err == zk.ErrNodeExists {
+			continue
+		}
+		if err != nil {
+			return nil, smutil.Cherrf(err, "could not create %s in ZK", orgPath)
+		}
+	}
+
+	children, _, err = s.conn.Children(path)
+	if err == zk.ErrNoNode {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
+	}
+	sort.Strings(children)
+
+	return children, nil
 }
 
 func (s *ZkStorage) RemoveStationaryOrgs(orgs []string) ([]string, error) {
-	panic("not implemented")
+	path := s.stationaryPath()
+	for _, org := range orgs {
+		orgPath := fmt.Sprintf("%s/%s", path, org)
+		err := s.conn.Delete(orgPath, -1)
+		if err != nil && err != zk.ErrNoNode {
+			return nil, smutil.Cherrf(err, "could not delete %s in ZK", orgPath)
+		}
+	}
+
+	children, _, err := s.conn.Children(path)
+	if err == zk.ErrNoNode {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, smutil.Cherrf(err, "could not get children at %s in ZK", path)
+	}
+	sort.Strings(children)
+
+	return children, nil
 }
 
 func (s *ZkStorage) IsDisabled() (bool, error) {

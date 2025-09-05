@@ -159,8 +159,8 @@ func testStorage_StationaryOrgList(t *testing.T, s SolrManStorage) {
 		}
 	}
 
-	orgsToRemove := []string{"org2"}
-	expectedRemainingOrgs := []string{"org1", "org3"}
+	orgsToRemove := []string{"org2", "org3"}
+	expectedRemainingOrgs := []string{"org1"}
 	stationaryOrgList, err = s.RemoveStationaryOrgs(orgsToRemove)
 	if err != nil {
 		t.Errorf("RemoveStationaryOrgs failed: %s", err)
@@ -170,7 +170,7 @@ func testStorage_StationaryOrgList(t *testing.T, s SolrManStorage) {
 		t.Errorf("expected %d orgs in stationary org list, got %v", len(orgs), stationaryOrgList)
 	}
 	for _, org := range stationaryOrgList {
-		if org == "org2" {
+		if org == "org2" || org == "org3" {
 			t.Errorf("expected org %s not in stationary org list, got %v", org, stationaryOrgList)
 		}
 	}
@@ -183,5 +183,11 @@ func testStorage_StationaryOrgList(t *testing.T, s SolrManStorage) {
 				t.Errorf("expected org %s in stationary org list, got %v", orgs[i], stationaryOrgList)
 			}
 		}
+	}
+
+	stationaryOrgList, err = s.RemoveStationaryOrgs([]string{"doesnotexist"})
+	if err != nil {
+		t.Errorf("RemoveStationaryOrgs failed: %s", err)
+		return
 	}
 }

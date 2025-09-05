@@ -105,9 +105,14 @@ func (s *InMemoryStorage) GetStationaryOrgList() ([]string, error) {
 func (s *InMemoryStorage) AddStationaryOrgs(orgs []string) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	s.stationaryOrgList = append(s.stationaryOrgList, orgs...)
+	s.stationaryOrgList = AddOrgsToStationaryOrgList(orgs, s.stationaryOrgList)
 
 	return s.stationaryOrgList, nil
+}
+
+func AddOrgsToStationaryOrgList(orgs []string, stationaryOrgList []string) []string {
+	stationaryOrgList = append(stationaryOrgList, orgs...)
+	return stationaryOrgList
 }
 
 func (s *InMemoryStorage) RemoveStationaryOrgs(orgs []string) ([]string, error) {
