@@ -127,3 +127,7 @@ func testStorage_CompletedOps(t *testing.T, s SolrManStorage) {
 	// A negative count also returns all values.
 	assertOps(-1, expectOps...)
 }
+
+func testStorage_StationaryOrgList(t *testing.T, s SolrManStorage) {
+	
+}

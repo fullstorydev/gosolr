@@ -25,3 +25,7 @@ func TestInMemoryStorage_InProgressOps(t *testing.T) {
 func TestInMemoryStorage_CompletedOps(t *testing.T) {
 	testStorage_CompletedOps(t, &InMemoryStorage{})
 }
+
+func TestInMemoryStorage_StationaryOrgList(t *testing.T) {
+	testStorage_StationaryOrgList(t, &InMemoryStorage{})
+}

@@ -33,6 +33,7 @@ type InMemoryStorage struct {
 	queryAggregatorStabbingEnabled bool
 	inProgress                     map[string]solrmanapi.OpRecord
 	completed                      []solrmanapi.OpRecord
+	stationaryOrgList              []string
 }
 
 var _ SolrManStorage = &InMemoryStorage{}
@@ -98,7 +99,7 @@ func (s *InMemoryStorage) GetStationaryOrgList() ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return nil, nil
+	return s.stationaryOrgList, nil
 }
 
 func (s *InMemoryStorage) IsDisabled() (bool, error) {
