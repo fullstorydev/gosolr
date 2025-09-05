@@ -138,10 +138,10 @@ func TestZkStorage_IsDisabled(t *testing.T) {
 
 	testutil.createWithData(s.disabledPath()+"/test", "testDisabled")
 
-	if isDisabled, _ := s.IsDisabled(); !IsDisabled {
+	if isDisabled, _ := s.IsDisabled(); !isDisabled {
 		t.Error("expected to be disabled")
-	} else if reasons, _ := s.GetDisabledReasons(); reasons[0] != "testDisabled" {
-		t.Errorf("expect reason is \"testDisabled\"; got %s", reason)
+	} else if reasons, _ := s.GetDisabledReasons(); reasons["test"] != "testDisabled" {
+		t.Errorf("expect reason is \"testDisabled\"; got %s", reasons["test"])
 	}
 
 }
@@ -151,7 +151,7 @@ func TestZkStorage_SetDisabled(t *testing.T) {
 	defer testutil.teardown()
 
 	if isDisabled, reason := s.IsDisabled(); isDisabled {
-		t.Error("expected to not be disabled; reason found was %s", reason)
+		t.Errorf("expected to not be disabled; reason found was %s", reason)
 	}
 	if ok, _, _ := s.conn.Exists(s.disabledPath()); ok {
 		t.Errorf("%s should not exist", s.disabledPath())
@@ -232,4 +232,10 @@ func TestZkStorage_IsQueryAggregatorStabbingEnabled(t *testing.T) {
 	if !s.IsQueryAggregatorStabbingEnabled() {
 		t.Error("expected query aggregator stabbing to be enabled")
 	}
+}
+
+func TestZkStorage_GetStationaryOrgList(t *testing.T) {
+	s, testutil := setup(t)
+	defer testutil.teardown()
+	testStorage_StationaryOrgList(t, s)
 }
