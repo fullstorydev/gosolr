@@ -199,6 +199,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 			}
 
 			if 9*source.Size < 10*target.Size {
+				fmt.Printf("Skipping target %s because it's already >=90%% of source %s (source size=%d, target size=%d)\n", target.Name, source.Name, source.Size, target.Size)
 				// if the target node is >=90% of the source node, don't bother
 				return nil
 			}
