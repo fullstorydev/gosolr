@@ -109,6 +109,7 @@ func (m *Model) WithMove(move Move) *Model {
 }
 
 func (m *Model) computeNextMove(immobileCores []bool) *Move {
+	fmt.Printf("Computing next moves\n")
 	if len(m.Nodes) < 2 || len(m.Cores) < 1 {
 		// can't balance a single-node or empty cluster
 		return nil
@@ -238,7 +239,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 
 	// Step 2: balance collections next, respecting node max size.
 	for i, bi := range balanceInfo {
-		fmt.Printf("%d : coll %s score=%d maxCoresPerNode=%d coresPerNode=%v\n", i, bi.coll.Name, bi.score, bi.maxCoresPerNode, bi.coresPerNode)
+		fmt.Printf("Balance info %d : coll %s score=%d maxCoresPerNode=%d coresPerNode=%v\n", i, bi.coll.Name, bi.score, bi.maxCoresPerNode, bi.coresPerNode)
 		if bi.score == 0 {
 			continue
 		}
