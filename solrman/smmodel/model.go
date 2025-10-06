@@ -236,7 +236,8 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 	}
 
 	// Step 2: balance collections next, respecting node max size.
-	for _, bi := range balanceInfo {
+	for i, bi := range balanceInfo {
+		fmt.Printf("%d : coll %s score=%d maxCoresPerNode=%d coresPerNode=%v\n", i, bi.coll.Name, bi.score, bi.maxCoresPerNode, bi.coresPerNode)
 		if bi.score == 0 {
 			continue
 		}
@@ -271,6 +272,8 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 			continue
 		}
 
+		fmt.Printf("Picked core %+v to move\n", core)
+
 		// Find a suitable target node with the least number of collection replicas and the smallest node size
 		targets := make([]*Node, len(m.Nodes))
 		copy(targets, m.Nodes)
@@ -289,15 +292,19 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				break
 			}
 			if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
+				fmt.Printf("Skipping target %s because it would exceed max size. Current target size=%d, core size=%d, max size=%d\n", target.Name, target.Size, core.Size, target.MaxSize)
 				continue
 			}
 
 			// Found a good choice.
-			return &Move{
+			move := &Move{
 				Core:     core,
 				FromNode: fromNode,
 				ToNode:   target,
 			}
+			fmt.Printf("Found good move %+v\n", move)
+			return move
+
 		}
 	}
 
