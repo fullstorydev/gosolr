@@ -101,6 +101,8 @@ func (c *Collection) balance(nodeCount int) balanceInfo {
 		for _, v := range coresPerNode {
 			if v > maxCoresPerNode {
 				score += int64((v - maxCoresPerNode) * (v - maxCoresPerNode))
+			} else if v < maxCoresPerNode-1 { //+ score if there are many nodes with very few cores
+				score += int64((v - (maxCoresPerNode - 1)) * (v - (maxCoresPerNode - 1)))
 			}
 		}
 
