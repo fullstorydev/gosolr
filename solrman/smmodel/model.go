@@ -312,8 +312,28 @@ func (m *Model) computeNextMove(immobileCores []bool) (*Move, string) {
 	// Step 3: balance nodes next, respecting collection balance.
 	// Take the largest core from the largest node, and move it to the smallest node, provided we don't violate constraints.
 	if len(nodesBySize) > 1 {
-		biggest := nodesBySize[len(nodesBySize)-1]
-		return tryMoveCoreFrom(biggest, false)
+		firstReason := ""
+		lastReason := ""
+		//try to move from the higher half nodes
+		for i := 1; i <= len(nodesBySize)/2; i++ {
+			fromNode := nodesBySize[len(nodesBySize)-i]
+			move, reason := tryMoveCoreFrom(fromNode, false)
+			if i == 1 {
+				firstReason = reason //first reason has some significance, why the node with highest usage cannot generate any moves
+			}
+			lastReason = reason
+			if move != nil { //found a valid move
+				return move, ""
+			}
+		}
+		var finalReason string
+		if firstReason != lastReason {
+			finalReason = fmt.Sprintf("First Reason: %s, Last Reason: %s", firstReason, lastReason)
+		} else {
+			finalReason = lastReason
+		}
+
+		return nil, finalReason //no valid moves from the higher half nodes, return the reason of first and last iteration
 	}
 
 	return nil, "nodesBySize is <= 1"
