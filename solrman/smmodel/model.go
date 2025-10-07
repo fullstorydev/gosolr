@@ -168,6 +168,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 		return nodesBySize[i].Size < nodesBySize[j].Size
 	})
 
+	fmt.Printf("Computing from step 3 move")
 	// Try to move a core from the given node.
 	tryMoveCoreFrom := func(source *Node, force bool) *Move {
 		for _, target := range nodesBySize {
@@ -226,6 +227,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 					continue
 				}
 
+				fmt.Printf("Found good move from step 3 from %s to %s. Source size: %d Target Size: %d on coll %s shard %s\n", source.Name, target.Name, source.Size, target.Size, core.Collection, core.Shard)
 				// Found a good candidate.
 				return &Move{
 					Core:     core,
@@ -304,7 +306,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				FromNode: fromNode,
 				ToNode:   target,
 			}
-			fmt.Printf("Found good move %+v\n", move)
+			fmt.Printf("Found good move from step 2 %+v\n", move)
 			return move
 
 		}
