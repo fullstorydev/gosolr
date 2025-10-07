@@ -96,11 +96,15 @@ func (c *Collection) balance(nodeCount int) balanceInfo {
 			coresPerNode[core.nodeId]++
 		}
 
-		// sum of squares, 10 extra cores on one machine is way worse than 1 extra core on 10 machines.
+		// scoring - higher scores mean better candidate for moves, add score if:
+		// 1. node's core count is higher than the ideal maxCoresPerNode. Square here, as 10 extra cores on one machine is way worse than 1 extra core on 10 machines.
+		// 2. node has fewer cores than ideal maxCoresPerNode, and the delta is at least 2. Using square to amplify deviation similar to point 1
 		var score int64
 		for _, v := range coresPerNode {
 			if v > maxCoresPerNode {
 				score += int64((v - maxCoresPerNode) * (v - maxCoresPerNode))
+			} else if v < maxCoresPerNode-1 { //+ score if there are many nodes with very few cores
+				score += int64((v - (maxCoresPerNode - 1)) * (v - (maxCoresPerNode - 1)))
 			}
 		}
 

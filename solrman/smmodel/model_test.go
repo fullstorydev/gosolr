@@ -24,56 +24,64 @@ import (
 func TestEmptyModel(t *testing.T) {
 	t.Parallel()
 	m := &Model{}
-	moves := m.ComputeBestMoves(1)
+	moves, reason := m.ComputeBestMoves(1)
 	if len(moves) != 0 {
 		t.Errorf("Expected no moves")
 	}
+	assertString(t, "No balance on singe-node/empty cluster", reason)
 }
 
 func TestTinyModel(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(tinyModel)
-	moves := m.ComputeBestMoves(1)
+	moves, reason := m.ComputeBestMoves(1)
 	if len(moves) != 0 {
 		t.Errorf("Expected no moves")
 	}
+
+	assertString(t, noFurtherMoves, reason)
 }
 
 func TestSmallModel(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(smallModel)
-	moves := m.ComputeBestMoves(3)
+	moves, reason := m.ComputeBestMoves(3)
 	assertEquals(t, []string{
 		`{"core":"A_shard1_0_replica2","collection":"A","shard":"shard1_0","from_node":"solr-1.node","to_node":"solr-2.node"}`,
 	}, moves)
+
+	assertString(t, noFurtherMoves, reason)
 }
 
 func TestDeletesExtraReplicas(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(extraReplicaModel)
-	moves := m.ComputeBestMoves(3)
+	moves, reason := m.ComputeBestMoves(3)
 	assertEquals(t, []string{
 		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-2.node","to_node":"solr-1.node"}`,
 	}, moves)
+	assertString(t, noFurtherMoves, reason)
 }
 
 func TestCollectionBalanceModel(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(collectionBalanceModel)
-	moves := m.ComputeBestMoves(3)
+	moves, reason := m.ComputeBestMoves(3)
 
 	if len(moves) != 0 {
 		t.Errorf("Should not have any move")
 	}
+	assertString(t, noFurtherMoves, reason)
 }
 
 func TestThrashingModel(t *testing.T) {
 	t.Parallel()
 	m := createTestModel(thrashingModel)
-	moves := m.ComputeBestMoves(1)
+	moves, reason := m.ComputeBestMoves(1)
 	if len(moves) != 0 {
 		t.Errorf("Should not have any moves")
 	}
+	assertString(t, noFurtherMoves, reason)
 }
 
 func TestLargeModel(t *testing.T) {
@@ -85,14 +93,28 @@ func TestLargeModel(t *testing.T) {
 
 	// TODO(jh): review results
 	m := createTestModel(string(data))
-	moves := m.ComputeBestMoves(5)
+	moves, reason := m.ComputeBestMoves(5)
 	assertEquals(t, []string{
 		`{"core":"collD_shard1_0_0_0_replica1","collection":"collD","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
 		`{"core":"collD_shard1_0_0_1_replica1","collection":"collD","shard":"shard1_0_0_1","from_node":"solr-1.node","to_node":"solr-9.node"}`,
 		`{"core":"collD_shard1_0_1_0_replica1","collection":"collD","shard":"shard1_0_1_0","from_node":"solr-1.node","to_node":"solr-7.node"}`,
 		`{"core":"coll3F_shard1_0_0_0_replica1","collection":"coll3F","shard":"shard1_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
-		`{"core":"coll8A_shard1_0_1_0_replica1","collection":"coll8A","shard":"shard1_0_1_0","from_node":"solr-4.node","to_node":"solr-6.node"}`,
+		`{"core":"coll15_shard1_0_0_0_0_0_replica1","collection":"coll15","shard":"shard1_0_0_0_0_0","from_node":"solr-1.node","to_node":"solr-6.node"}`,
 	}, moves)
+
+	assertString(t, "", reason) //no reason as there are 5 moves as desired
+}
+
+func TestStorageModel(t *testing.T) {
+	t.Parallel()
+	m := createTestModel(storageModel)
+	moves, reason := m.ComputeBestMoves(2)
+
+	assertEquals(t, []string{
+		`{"core":"A_shard1_replica1","collection":"A","shard":"shard1","from_node":"solr-1.node","to_node":"solr-2.node"}`,
+		`{"core":"B_shard1_replica1","collection":"B","shard":"shard1","from_node":"solr-2.node","to_node":"solr-1.node"}`,
+	}, moves)
+	assertString(t, "", reason) //no reason as there are 2 moves as desired
 }
 
 func assertEquals(t *testing.T, expected []string, actual []Move) {
@@ -105,6 +127,12 @@ func assertEquals(t *testing.T, expected []string, actual []Move) {
 		} else if actual[i].String() != expected[i] {
 			t.Errorf("at index: %d\nexpected: %s\n  actual: %s", i, expected[i], &actual[i])
 		}
+	}
+}
+
+func assertString(t *testing.T, expected string, actual string) {
+	if expected != actual {
+		t.Errorf("Expected %s but found %s", expected, actual)
 	}
 }
 
@@ -272,5 +300,19 @@ const (
 		"A_shard2_replica3,15.0M,3.0GB\n" +
 		"solr-2.node,2.2.2.2:8983_solr\n" +
 		"A_shard4_replica5,15.0M,8.0GB\n" +
+		""
+
+	// Prioritize collection balance first (step 2)
+	// Node space step (step 3) should NOT violate collection balance
+	// hence it should NOT move A back from node 2 to 1, instead it should move B to node 1
+	//
+	storageModel = "" +
+		"solr-1.node,1.1.1.1:8983_solr\n" +
+		"A_shard1_replica1,5.0M,5.1GB\n" +
+		"A_shard2_replica1,5.0M,5.0GB\n" +
+		"A_shard3_replica1,5.0M,5.0GB\n" +
+		"solr-2.node,2.2.2.2:8983_solr\n" +
+		"A_shard4_replica1,10.0M,15.0GB\n" +
+		"B_shard1_replica1,1.0M,1.0GB\n" +
 		""
 )
