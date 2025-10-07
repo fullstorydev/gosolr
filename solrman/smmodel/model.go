@@ -333,13 +333,17 @@ func (m *Model) ComputeBestMoves(count int) []Move {
 	immobileCores := make([]bool, len(m.Cores)) // cores that have already moved
 	for i := 0; i < count; i++ {
 		move := curModel.computeNextMove(immobileCores)
-		if move == nil || move.lastMove {
+		if move == nil {
 			// no good moves
 			break
 		}
 		immobileCores[move.Core.id] = true
 		moves = append(moves, *move)
 		curModel = curModel.WithMove(*move)
+		if move.lastMove {
+			// don't compute more moves
+			break
+		}
 	}
 
 	return moves
