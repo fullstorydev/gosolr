@@ -215,6 +215,11 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 					continue
 				}
 
+				//Make sure it would not violate balance per collection ie no nodes will be 2 shards than other after such moves
+				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.coresPerNode[source.id] {
+					continue
+				}
+
 				// Don't bother moving this core if the target node would become bigger than the source node.
 				if target.Size+core.Size >= source.Size {
 					continue
