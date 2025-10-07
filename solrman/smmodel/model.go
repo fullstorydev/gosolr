@@ -168,7 +168,6 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 		return nodesBySize[i].Size < nodesBySize[j].Size
 	})
 
-	fmt.Printf("Computing from step 3 move")
 	// Try to move a core from the given node.
 	tryMoveCoreFrom := func(source *Node, force bool) *Move {
 		for _, target := range nodesBySize {
@@ -228,11 +227,12 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				}
 
 				fmt.Printf("Found good move from step 3 from %s to %s. Source size: %d Target Size: %d on coll %s shard %s\n", source.Name, target.Name, source.Size, target.Size, core.Collection, core.Shard)
-				// Found a good candidate.
+				// Found a good candidate. Only allow one move from step 3 for now to workaround the "back and forth" issue
 				return &Move{
 					Core:     core,
 					FromNode: source,
 					ToNode:   target,
+					lastMove: true,
 				}
 			}
 		}
@@ -312,6 +312,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 		}
 	}
 
+	fmt.Printf("Computing from step 3 move\n")
 	// Step 3: balance nodes next, respecting collection balance.
 	// Take the largest core from the largest node, and move it to the smallest node, provided we don't violate constraints.
 	if len(nodesBySize) > 1 {
@@ -332,7 +333,7 @@ func (m *Model) ComputeBestMoves(count int) []Move {
 	immobileCores := make([]bool, len(m.Cores)) // cores that have already moved
 	for i := 0; i < count; i++ {
 		move := curModel.computeNextMove(immobileCores)
-		if move == nil {
+		if move == nil || move.lastMove {
 			// no good moves
 			break
 		}
