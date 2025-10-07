@@ -109,6 +109,7 @@ func (m *Model) WithMove(move Move) *Model {
 }
 
 func (m *Model) computeNextMove(immobileCores []bool) *Move {
+	fmt.Printf("Computing next moves\n")
 	if len(m.Nodes) < 2 || len(m.Cores) < 1 {
 		// can't balance a single-node or empty cluster
 		return nil
@@ -169,10 +170,12 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 
 	// Try to move a core from the given node.
 	tryMoveCoreFrom := func(source *Node, force bool) *Move {
-		for _, target := range nodesBySize {
+		for i, target := range nodesBySize {
 			if target == source {
 				continue
 			}
+
+			fmt.Printf("  #%d: %s %d \n", i, target.Name, target.Size)
 
 			// Move the largest core that doesn't violate constraints.
 			var candidates []*Core
@@ -198,33 +201,45 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				}
 			}
 
-			if 9*source.Size < 10*target.Size {
-				// if the target node is >=90% of the source node, don't bother
+			if target.Size > int64(float64(source.Size)*0.995) {
+				fmt.Printf("Skipping step 3 move from %s to %s because target is already >99.5%% of source\n", source.Name, target.Name)
+				// if the target node is > 99.5% of the source node, don't bother
 				return nil
 			}
 
 			for _, core := range candidates {
 				if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
+					fmt.Printf("Skipping %s as max size would exceed after move core size %d, disk size %d, max size %d", target.Name, target.Size, core.Size, target.MaxSize)
 					continue
 				}
 				// Make sure moving this core won't violate collection balance.
 				coll := m.Collections[core.collectionId]
 				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.maxCoresPerNode {
+					fmt.Printf("Skipping %s as collection %s already has %d cores on it which maxCoresPerNode as %d", target.Name, coll.Name, coll.balanceInfo.coresPerNode[target.id], coll.balanceInfo.maxCoresPerNode)
+					continue
+				}
+
+				//Make sure it would not violate balance per collection ie no nodes will be 2 shards than other after such moves
+				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.coresPerNode[source.id] {
+					fmt.Printf("Skipping %s as collection %s already has %d cores on source and %d cores on target", target.Name, coll.Name, coll.balanceInfo.coresPerNode[source.id], coll.balanceInfo.coresPerNode[target.id])
 					continue
 				}
 
 				// Don't bother moving this core if the target node would become bigger than the source node.
 				if target.Size+core.Size >= source.Size {
+					fmt.Printf("Skipping %s as after move size on target %d would exceed the size of source %d", target.Name, target.Size+core.Size, source.Size)
 					continue
 				}
 
 				// If the source is substantially under the maximum size (<10%), only move if the target node is substantially smaller than the source node.
 				// This is to avoid move thrashing in a cluster that is drastically below capacity while nodes are rapidly growing.
 				if source.Size*10 < source.MaxSize && target.Size+5*core.Size >= source.Size {
+					fmt.Printf("Skipping %s as due to under size", target.Name)
 					continue
 				}
 
-				// Found a good candidate.
+				fmt.Printf("Found good move from step 3 from %s to %s. Source size: %d Target Size: %d on coll %s shard %s\n", source.Name, target.Name, source.Size, target.Size, core.Collection, core.Shard)
+				// Found a good candidate. Only allow one move from step 3 for now to workaround the "back and forth" issue
 				return &Move{
 					Core:     core,
 					FromNode: source,
@@ -236,7 +251,8 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 	}
 
 	// Step 2: balance collections next, respecting node max size.
-	for _, bi := range balanceInfo {
+	for i, bi := range balanceInfo {
+		fmt.Printf("Balance info %d : coll %s score=%d maxCoresPerNode=%d coresPerNode=%v\n", i, bi.coll.Name, bi.score, bi.maxCoresPerNode, bi.coresPerNode)
 		if bi.score == 0 {
 			continue
 		}
@@ -271,6 +287,8 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 			continue
 		}
 
+		fmt.Printf("Picked core %+v to move\n", core)
+
 		// Find a suitable target node with the least number of collection replicas and the smallest node size
 		targets := make([]*Node, len(m.Nodes))
 		copy(targets, m.Nodes)
@@ -289,18 +307,23 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				break
 			}
 			if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
+				fmt.Printf("Skipping target %s because it would exceed max size. Current target size=%d, core size=%d, max size=%d\n", target.Name, target.Size, core.Size, target.MaxSize)
 				continue
 			}
 
 			// Found a good choice.
-			return &Move{
+			move := &Move{
 				Core:     core,
 				FromNode: fromNode,
 				ToNode:   target,
 			}
+			fmt.Printf("Found good move from step 2 %+v\n", move)
+			return move
+
 		}
 	}
 
+	fmt.Printf("Computing from step 3 move\n")
 	// Step 3: balance nodes next, respecting collection balance.
 	// Take the largest core from the largest node, and move it to the smallest node, provided we don't violate constraints.
 	if len(nodesBySize) > 1 {
