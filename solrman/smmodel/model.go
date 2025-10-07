@@ -201,7 +201,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 
 			if target.Size > int64(float64(source.Size)*0.98) {
 				fmt.Printf("Skipping step 3 move from %s to %s because target is already >98%% of source\n", source.Name, target.Name)
-				// if the target node is >=90% of the source node, don't bother
+				// if the target node is > 98% of the source node, don't bother
 				return nil
 			}
 
