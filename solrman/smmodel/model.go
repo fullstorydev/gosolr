@@ -218,7 +218,6 @@ func (m *Model) computeNextMove(immobileCores []bool) (*Move, string) {
 				//Make sure it would not violate balance per collection ie target and source node would not have core
 				//per collection delta >= 2 after the move
 				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.coresPerNode[source.id] {
-					fmt.Printf("Skipping %s as collection %s already has %d cores on source and %d cores on target", target.Name, coll.Name, coll.balanceInfo.coresPerNode[source.id], coll.balanceInfo.coresPerNode[target.id])
 					continue
 				}
 
