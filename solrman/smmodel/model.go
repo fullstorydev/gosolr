@@ -170,15 +170,12 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 
 	// Try to move a core from the given node.
 	tryMoveCoreFrom := func(source *Node, force bool) *Move {
-		fmt.Printf("Nodes by size: \n")
 		for i, target := range nodesBySize {
-			fmt.Printf("  #%d: %s %d \n", i, target.Name, target.Size)
-		}
-
-		for _, target := range nodesBySize {
 			if target == source {
 				continue
 			}
+
+			fmt.Printf("  #%d: %s %d \n", i, target.Name, target.Size)
 
 			// Move the largest core that doesn't violate constraints.
 			var candidates []*Core
@@ -212,27 +209,32 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 
 			for _, core := range candidates {
 				if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
+					fmt.Printf("Skipping %s as max size would exceed after move core size %d, disk size %d, max size %d", target.Name, target.Size, core.Size, target.MaxSize)
 					continue
 				}
 				// Make sure moving this core won't violate collection balance.
 				coll := m.Collections[core.collectionId]
 				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.maxCoresPerNode {
+					fmt.Printf("Skipping %s as collection %s already has %d cores on it which maxCoresPerNode as %d", target.Name, coll.Name, coll.balanceInfo.coresPerNode[target.id], coll.balanceInfo.maxCoresPerNode)
 					continue
 				}
 
 				//Make sure it would not violate balance per collection ie no nodes will be 2 shards than other after such moves
 				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.coresPerNode[source.id] {
+					fmt.Printf("Skipping %s as collection %s already has %d cores on source and %d cores on target", target.Name, coll.Name, coll.balanceInfo.coresPerNode[source.id], coll.balanceInfo.coresPerNode[target.id])
 					continue
 				}
 
 				// Don't bother moving this core if the target node would become bigger than the source node.
 				if target.Size+core.Size >= source.Size {
+					fmt.Printf("Skipping %s as after move size on target %d would exceed the size of source %d", target.Name, target.Size+core.Size, source.Size)
 					continue
 				}
 
 				// If the source is substantially under the maximum size (<10%), only move if the target node is substantially smaller than the source node.
 				// This is to avoid move thrashing in a cluster that is drastically below capacity while nodes are rapidly growing.
 				if source.Size*10 < source.MaxSize && target.Size+5*core.Size >= source.Size {
+					fmt.Printf("Skipping %s as due to under size", target.Name)
 					continue
 				}
 
