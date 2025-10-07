@@ -170,6 +170,11 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 
 	// Try to move a core from the given node.
 	tryMoveCoreFrom := func(source *Node, force bool) *Move {
+		fmt.Printf("Nodes by size: \n")
+		for i, target := range nodesBySize {
+			fmt.Printf("  #%d: %s %d \n", i, target.Name, target.Size)
+		}
+
 		for _, target := range nodesBySize {
 			if target == source {
 				continue
