@@ -237,7 +237,6 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 					Core:     core,
 					FromNode: source,
 					ToNode:   target,
-					lastMove: true,
 				}
 			}
 		}
@@ -345,10 +344,6 @@ func (m *Model) ComputeBestMoves(count int) []Move {
 		immobileCores[move.Core.id] = true
 		moves = append(moves, *move)
 		curModel = curModel.WithMove(*move)
-		if move.lastMove {
-			// don't compute more moves
-			break
-		}
 	}
 
 	return moves

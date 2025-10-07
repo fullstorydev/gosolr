@@ -20,7 +20,6 @@ type Move struct {
 	Core     *Core
 	FromNode *Node
 	ToNode   *Node
-	lastMove bool
 }
 
 func (m *Move) String() string {
