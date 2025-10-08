@@ -122,7 +122,11 @@ func (m *Model) computeNextMove(immobileCores []bool) (*Move, string) {
 		balanceInfo = append(balanceInfo, c.balance(len(m.Nodes)))
 	}
 	sort.Slice(balanceInfo, func(i, j int) bool {
-		return balanceInfo[i].score > balanceInfo[j].score
+		if balanceInfo[i].score != balanceInfo[j].score {
+			return balanceInfo[i].score > balanceInfo[j].score
+		} else {
+			return balanceInfo[i].coll.Name < balanceInfo[j].coll.Name
+		}
 	})
 
 	// Step 1: remove duplicate replicas
