@@ -19,6 +19,8 @@ import (
 	"sort"
 )
 
+const noFurtherMoves = "No further moves found after iterating all the cores and nodes"
+
 type Model struct {
 	Nodes       []*Node       `json:"nodes"`
 	Collections []*Collection `json:"collections"`
@@ -108,10 +110,10 @@ func (m *Model) WithMove(move Move) *Model {
 	}
 }
 
-func (m *Model) computeNextMove(immobileCores []bool) *Move {
+func (m *Model) computeNextMove(immobileCores []bool) (*Move, string) {
 	if len(m.Nodes) < 2 || len(m.Cores) < 1 {
 		// can't balance a single-node or empty cluster
-		return nil
+		return nil, "No balance on singe-node/empty cluster"
 	}
 
 	// Compute balance info.
@@ -120,7 +122,11 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 		balanceInfo = append(balanceInfo, c.balance(len(m.Nodes)))
 	}
 	sort.Slice(balanceInfo, func(i, j int) bool {
-		return balanceInfo[i].score > balanceInfo[j].score
+		if balanceInfo[i].score != balanceInfo[j].score {
+			return balanceInfo[i].score > balanceInfo[j].score
+		} else {
+			return balanceInfo[i].coll.Name < balanceInfo[j].coll.Name
+		}
 	})
 
 	// Step 1: remove duplicate replicas
@@ -157,7 +163,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				Core:     core,
 				FromNode: from,
 				ToNode:   to,
-			}
+			}, ""
 		}
 	}
 
@@ -168,7 +174,7 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 	})
 
 	// Try to move a core from the given node.
-	tryMoveCoreFrom := func(source *Node, force bool) *Move {
+	tryMoveCoreFrom := func(source *Node, force bool) (*Move, string) {
 		for _, target := range nodesBySize {
 			if target == source {
 				continue
@@ -195,12 +201,12 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 					Core:     candidates[0],
 					FromNode: source,
 					ToNode:   target,
-				}
+				}, ""
 			}
 
-			if 9*source.Size < 10*target.Size {
-				// if the target node is >=90% of the source node, don't bother
-				return nil
+			if target.Size > int64(float64(source.Size)*0.99) {
+				// if the target node is > 99% of the source node, don't bother
+				return nil, fmt.Sprintf("Target node %s with size %d is already > 99%% of source node %s with size %d", target.Name, target.Size, source.Name, source.Size)
 			}
 
 			for _, core := range candidates {
@@ -210,6 +216,12 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				// Make sure moving this core won't violate collection balance.
 				coll := m.Collections[core.collectionId]
 				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.maxCoresPerNode {
+					continue
+				}
+
+				//Make sure it would not violate balance per collection ie target and source node would not have core
+				//per collection delta >= 2 after the move
+				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.coresPerNode[source.id] {
 					continue
 				}
 
@@ -229,10 +241,10 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 					Core:     core,
 					FromNode: source,
 					ToNode:   target,
-				}
+				}, ""
 			}
 		}
-		return nil
+		return nil, noFurtherMoves
 	}
 
 	// Step 2: balance collections next, respecting node max size.
@@ -297,30 +309,50 @@ func (m *Model) computeNextMove(immobileCores []bool) *Move {
 				Core:     core,
 				FromNode: fromNode,
 				ToNode:   target,
-			}
+			}, ""
 		}
 	}
 
 	// Step 3: balance nodes next, respecting collection balance.
 	// Take the largest core from the largest node, and move it to the smallest node, provided we don't violate constraints.
 	if len(nodesBySize) > 1 {
-		biggest := nodesBySize[len(nodesBySize)-1]
-		m := tryMoveCoreFrom(biggest, false)
-		if m != nil {
-			return m
+		firstReason := ""
+		lastReason := ""
+		//try to move from the higher half nodes
+		for i := 1; i <= len(nodesBySize)/2; i++ {
+			fromNode := nodesBySize[len(nodesBySize)-i]
+			move, reason := tryMoveCoreFrom(fromNode, false)
+			if i == 1 {
+				firstReason = reason //first reason has some significance, why the node with highest usage cannot generate any moves
+			}
+			lastReason = reason
+			if move != nil { //found a valid move
+				return move, ""
+			}
 		}
+		var finalReason string
+		if firstReason != lastReason {
+			finalReason = fmt.Sprintf("First Reason: %s, Last Reason: %s", firstReason, lastReason)
+		} else {
+			finalReason = lastReason
+		}
+
+		return nil, finalReason //no valid moves from the higher half nodes, return the reason of first and last iteration
 	}
 
-	return nil
+	return nil, "nodesBySize is <= 1"
 }
 
-func (m *Model) ComputeBestMoves(count int) []Move {
+func (m *Model) ComputeBestMoves(count int) ([]Move, string) {
 	var moves []Move
 
 	curModel := m
 	immobileCores := make([]bool, len(m.Cores)) // cores that have already moved
+
+	reason := "" //reason of why there's no more good moves
 	for i := 0; i < count; i++ {
-		move := curModel.computeNextMove(immobileCores)
+		var move *Move
+		move, reason = curModel.computeNextMove(immobileCores)
 		if move == nil {
 			// no good moves
 			break
@@ -330,5 +362,5 @@ func (m *Model) ComputeBestMoves(count int) []Move {
 		curModel = curModel.WithMove(*move)
 	}
 
-	return moves
+	return moves, reason
 }
