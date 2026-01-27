@@ -87,14 +87,12 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	case zk.EventNotWatching:
 		// Lost ZK session; we'll need to re-register all watches when it comes back.
-		// Just enqueue both kinds of tasks, we might throw them away later.
-		m.enqueueDeferredTask(deferredDataTask{evt.Path})
-		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
-		
-		// Notify that watch was lost so flags can be reset
+		// First reset any watch flags, then enqueue recovery tasks.
 		if m.callbacks != nil {
 			m.callbacks.WatchLost(evt.Path)
 		}
+		m.enqueueDeferredTask(deferredDataTask{evt.Path})
+		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
 	default:
 		if evt.Err == zk.ErrClosing {
 			m.logger.Printf("ZkWatcherMan %s event received with state %s: closing", evt.Type, evt.State)
