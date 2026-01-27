@@ -806,7 +806,7 @@ func (coll *collection) carryOverConfigName(newState *CollectionState) {
 func (coll *collection) startMonitoringReplicaStatus() {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
 
-	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
+	// note: when ZK disconnects, hasWatch will reset to return false (and therefore we will create a new watch here)
 	if !coll.hasWatch() {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
