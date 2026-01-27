@@ -127,6 +127,16 @@ func (c callbacks) ShouldWatchData(path string) bool {
 	return c.SolrMonitor.shouldWatchPath(path) || c.SolrMonitor.shouldWatchCollection(path)
 }
 
+func (c callbacks) WatchLost(path string) {
+	// Reset isWatched for any collection whose state.json watch was lost
+	if strings.HasSuffix(path, "/state.json") {
+		if coll := c.SolrMonitor.getCollFromPath(path); coll != nil {
+			coll.setWatch(false)
+			c.SolrMonitor.logger.Printf("WatchLost: reset isWatched for collection %s", coll.name)
+		}
+	}
+}
+
 func (c *SolrMonitor) Close() {
 	c.zkCli.Close()
 	c.zkWatcher.Close()

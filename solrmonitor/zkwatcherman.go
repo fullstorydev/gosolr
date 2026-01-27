@@ -28,6 +28,7 @@ type Callbacks interface {
 	DataChanged(path string, data string, stat *zk.Stat) error
 	ShouldWatchChildren(path string) bool
 	ShouldWatchData(path string) bool
+	WatchLost(path string)
 }
 
 // A MonitorChildren request whose last attempt to set a watch failed.
@@ -89,6 +90,11 @@ func (m *ZkWatcherMan) EventCallback(evt zk.Event) {
 		// Just enqueue both kinds of tasks, we might throw them away later.
 		m.enqueueDeferredTask(deferredDataTask{evt.Path})
 		m.enqueueDeferredTask(deferredChildrenTask{evt.Path})
+		
+		// Notify that watch was lost so flags can be reset
+		if m.callbacks != nil {
+			m.callbacks.WatchLost(evt.Path)
+		}
 	default:
 		if evt.Err == zk.ErrClosing {
 			m.logger.Printf("ZkWatcherMan %s event received with state %s: closing", evt.Type, evt.State)
