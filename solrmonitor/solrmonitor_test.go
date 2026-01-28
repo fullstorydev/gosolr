@@ -85,7 +85,7 @@ func setup(t *testing.T) (*SolrMonitor, *testutil) {
 		collStateEvents:  0,
 		collectionStates: make(map[string]*CollectionState),
 	}
-	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root, false, l)
+	sm, err := NewSolrMonitorWithRoot(conn, watcher, logger, root, nil, nil, l)
 	if err != nil {
 		conn.Close()
 		t.Fatal(err)
@@ -218,7 +218,7 @@ func TestCollectionChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sm2, err := NewSolrMonitorWithRoot(conn2, w2, testutil.logger, testutil.root, false, nil)
+	sm2, err := NewSolrMonitorWithRoot(conn2, w2, testutil.logger, testutil.root, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,4 +469,116 @@ func (l *SEListener) SolrCollectionReplicaStatesChanged(name string, replicaStat
 
 func (l *SEListener) SolrClusterPropsChanged(clusterprops map[string]string) {
 	l.clusterPropChangeEvents++
+}
+
+// TestPRSWatchReestablishedAfterWatchLost tests that PRS children watches are
+// re-established after a ZK watch is lost (e.g., due to session disconnect).
+//
+// The bug scenario:
+// 1. isWatched is true (watch was legitimately established)
+// 2. ZK disconnects, EventNotWatching fires, child watch goes away
+// 3. WITHOUT the fix: isWatched remains true (stale), recovery skips MonitorChildren
+// 4. WITH the fix: WatchLost resets isWatched to false, recovery calls MonitorChildren
+func TestPRSWatchReestablishedAfterWatchLost(t *testing.T) {
+	sm, testutil := setup(t)
+	defer testutil.teardown()
+
+	zkCli := testutil.conn
+
+	// Create the ZK structure for a PRS-enabled collection
+	zkCli.Create(sm.solrRoot+"/collections", nil, 0, zk.WorldACL(zk.PermAll))
+	_, err := zkCli.Create(sm.solrRoot+"/collections/c1", []byte(`{"configName":"_FS4"}`), 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up PRS-enabled collection with a replica
+	_, err = zkCli.Set(sm.solrRoot+"/collections/c1/state.json",
+		[]byte("{\"c1\":{\"perReplicaState\":\"true\", \"shards\":{\"shard_1\":{\"replicas\":{\"R1\":{\"core\":\"core1\"}}}}}}"), -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for collection to be detected
+	shouldExist(t, sm, "c1", func(collectionState *CollectionState) error {
+		if !collectionState.IsPRSEnabled() {
+			return errors.New("expected collection to be PRS enabled")
+		}
+		return nil
+	})
+
+	// Create initial PRS child: R1 is Active and Leader
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:1:A:L", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify initial PRS state
+	prsShouldExist(t, sm, "c1", "shard_1", "R1", "active", "true", 1)
+
+	// Verify the watch is established
+	coll := sm.getCollection("c1")
+	if coll == nil {
+		t.Fatal("collection c1 not found")
+	}
+	if !coll.hasWatch() {
+		t.Fatal("expected hasWatch() to be true after initial PRS setup")
+	}
+
+	// Record initial replica change events
+	initialReplicaEvents := testutil.solrEventListener.collReplicaChangeEvents
+
+	// === SIMULATE ZK DISCONNECT ===
+	// The bug: isWatched is true, but the actual ZK watch will be lost.
+	// Fire EventNotWatching to simulate ZK disconnect.
+	// The fix (WatchLost callback) should reset isWatched to false.
+	statePath := sm.solrRoot + "/collections/c1/state.json"
+
+	// Verify isWatched is true BEFORE the event (this is the stale state in the bug)
+	if !coll.hasWatch() {
+		t.Fatal("expected hasWatch() to be true before EventNotWatching")
+	}
+
+	sm.zkWatcher.EventCallback(zk.Event{
+		Type:  zk.EventNotWatching,
+		State: zk.StateDisconnected,
+		Path:  statePath,
+	})
+
+	// Immediately after EventNotWatching, the WatchLost callback should have
+	// reset isWatched to false (this is the fix!)
+	if coll.hasWatch() {
+		t.Error("expected hasWatch() to be false immediately after EventNotWatching (WatchLost should reset it)")
+	}
+
+	// Give deferred tasks time to process - they will re-establish the watch
+	time.Sleep(500 * time.Millisecond)
+
+	// === VERIFY FIX ===
+	// After deferred task processing, watch should be re-established
+	if !coll.hasWatch() {
+		t.Error("expected hasWatch() to be true after watch lost recovery")
+	}
+
+	// Update PRS state: R1 changes to version 2, Down, not leader
+	_, err = zkCli.Create(sm.solrRoot+"/collections/c1/state.json/R1:2:D", nil, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify PRS updates are received (watch is working)
+	prsShouldExist(t, sm, "c1", "shard_1", "R1", "down", "false", 2)
+
+	// Verify we received replica change events (proves the watch is active)
+	if testutil.solrEventListener.collReplicaChangeEvents <= initialReplicaEvents {
+		t.Error("expected to receive replica change events after watch recovery")
+	}
+
+	t.Logf("Test passed: PRS watch re-established after EventNotWatching, replica events: %d -> %d",
+		initialReplicaEvents, testutil.solrEventListener.collReplicaChangeEvents)
 }
