@@ -445,9 +445,15 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 		// watch coll/state.json childrens for replica status
 		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
 			coll := c.getCollFromPath(path)
-			if coll != nil {
-				return coll.isPRSEnabled()
+			if coll == nil {
+				c.logger.Printf("shouldWatchChildren: collection not found for path %s", path)
+				return false
 			}
+			if !coll.isPRSEnabled() {
+				c.logger.Printf("shouldWatchChildren: PRS not enabled for collection %s", coll.name)
+				return false
+			}
+			return true
 		}
 		return false
 	}
@@ -812,7 +818,11 @@ func (coll *collection) startMonitoringReplicaStatus() {
 		if err == nil {
 			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
 			coll.setWatch(true)
+		} else {
+			coll.parent.logger.Printf("startMonitoringReplicaStatus: error watching collection [%s] children: %s (will retry via deferred task)", coll.name, err)
 		}
+	} else {
+		coll.parent.logger.Printf("startMonitoringReplicaStatus: skipping collection [%s], already has watch", coll.name)
 	}
 }
 

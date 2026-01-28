@@ -226,6 +226,7 @@ func (m *ZkWatcherMan) fetchChildren(path string) (zkErr, cbErr error) {
 		m.enqueueDeferredTask(deferredChildrenTask{path: path})
 		return err, nil
 	} else {
+		m.logger.Printf("fetchChildren: established watch for %s with %d children", path, len(children))
 		return nil, m.callbacks.ChildrenChanged(path, children)
 	}
 }
