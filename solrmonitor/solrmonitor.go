@@ -127,6 +127,16 @@ func (c callbacks) ShouldWatchData(path string) bool {
 	return c.SolrMonitor.shouldWatchPath(path) || c.SolrMonitor.shouldWatchCollection(path)
 }
 
+func (c callbacks) WatchLost(path string) {
+	// Reset isWatched for any collection whose state.json watch was lost
+	if strings.HasSuffix(path, "/state.json") {
+		if coll := c.SolrMonitor.getCollFromPath(path); coll != nil {
+			coll.setWatch(false)
+			c.SolrMonitor.logger.Printf("WatchLost: reset isWatched for collection %s", coll.name)
+		}
+	}
+}
+
 func (c *SolrMonitor) Close() {
 	c.zkCli.Close()
 	c.zkWatcher.Close()
@@ -435,9 +445,15 @@ func (c *SolrMonitor) shouldWatchChildren(path string) bool {
 		// watch coll/state.json childrens for replica status
 		if strings.HasPrefix(path, c.solrRoot+"/collections/") && strings.HasSuffix(path, "/state.json") {
 			coll := c.getCollFromPath(path)
-			if coll != nil {
-				return coll.isPRSEnabled()
+			if coll == nil {
+				c.logger.Printf("shouldWatchChildren: collection not found for path %s", path)
+				return false
 			}
+			if !coll.isPRSEnabled() {
+				c.logger.Printf("shouldWatchChildren: PRS not enabled for collection %s", coll.name)
+				return false
+			}
+			return true
 		}
 		return false
 	}
@@ -796,13 +812,17 @@ func (coll *collection) carryOverConfigName(newState *CollectionState) {
 func (coll *collection) startMonitoringReplicaStatus() {
 	path := coll.parent.solrRoot + "/collections/" + coll.name + "/state.json"
 
-	// TODO: need to revisit coll.isWatched flag(if zk disconnects?). we need to create watch once only Scott?
+	// note: when ZK disconnects, hasWatch will reset to return false (and therefore we will create a new watch here)
 	if !coll.hasWatch() {
 		err := coll.parent.zkWatcher.MonitorChildren(path)
 		if err == nil {
 			coll.parent.logger.Printf("startMonitoringReplicaStatus: watching collection [%s] children for PRS", coll.name)
 			coll.setWatch(true)
+		} else {
+			coll.parent.logger.Printf("startMonitoringReplicaStatus: error watching collection [%s] children: %s (will retry via deferred task)", coll.name, err)
 		}
+	} else {
+		coll.parent.logger.Printf("startMonitoringReplicaStatus: skipping collection [%s], already has watch", coll.name)
 	}
 }
 
