@@ -204,18 +204,13 @@ func (m *Model) computeNextMove(immobileCores []bool) (*Move, string) {
 				}, ""
 			}
 
-			if target.Size > int64(float64(source.Size)*0.99) {
+			if target.Size > int64(float64(source.Size)*0.98) {
 				// if the target node is > 99% of the source node, don't bother
 				return nil, fmt.Sprintf("Target node %s with size %d is already > 99%% of source node %s with size %d", target.Name, target.Size, source.Name, source.Size)
 			}
 
 			for _, core := range candidates {
 				if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
-					continue
-				}
-				diff := target.Size - source.Size
-				if diff > 0 && target.Size > 0 && diff*100 <= target.Size {
-					// source and target are within 1% size of each other; skip
 					continue
 				}
 				// Make sure moving this core won't violate collection balance.
