@@ -213,6 +213,11 @@ func (m *Model) computeNextMove(immobileCores []bool) (*Move, string) {
 				if target.MaxSize > 0 && core.Size+target.Size > target.MaxSize {
 					continue
 				}
+				diff := target.Size - source.Size
+				if diff > 0 && target.Size > 0 && diff*100 <= target.Size {
+					// source and target are within 1% size of each other; skip
+					continue
+				}
 				// Make sure moving this core won't violate collection balance.
 				coll := m.Collections[core.collectionId]
 				if coll.balanceInfo.coresPerNode[target.id] >= coll.balanceInfo.maxCoresPerNode {
