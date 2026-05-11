@@ -204,9 +204,9 @@ func (m *Model) computeNextMove(immobileCores []bool) (*Move, string) {
 				}, ""
 			}
 
-			if target.Size > int64(float64(source.Size)*0.99) {
-				// if the target node is > 99% of the source node, don't bother
-				return nil, fmt.Sprintf("Target node %s with size %d is already > 99%% of source node %s with size %d", target.Name, target.Size, source.Name, source.Size)
+			if target.Size > int64(float64(source.Size)*0.98) {
+				// if the target node is > 98% of the source node, don't bother
+				return nil, fmt.Sprintf("Target node %s with size %d is already > 98%% of source node %s with size %d", target.Name, target.Size, source.Name, source.Size)
 			}
 
 			for _, core := range candidates {
